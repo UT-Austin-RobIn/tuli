@@ -4,6 +4,7 @@ import cv2
 import glob
 import numpy as np
 from tqdm import tqdm
+from termcolor import colored
 from pathlib import Path
 from loguru import logger
 from typing import Union, Optional, List, Tuple
@@ -51,8 +52,8 @@ class StereoCalibration:
         self.data_path = Path(data_path) if isinstance(data_path, str) else data_path
         self.charuco_board = charuco_board
 
-        self.left_images_path = self.load_images(self.data_path.joinpath("left", "*.png"))
-        self.right_images_path = self.load_images(self.data_path.joinpath("right", "*.png"))
+        self.left_images_path = self.load_images(self.data_path.joinpath("left", "*.jpg"))
+        self.right_images_path = self.load_images(self.data_path.joinpath("right", "*.jpg"))
         assert len(self.left_images_path) == len(self.right_images_path)
 
         # List to store stereo object points, charuco points and charuco ids from all the images.
@@ -101,9 +102,15 @@ class StereoCalibration:
         height, width = self.frame_size
         cx, cy = width / 2.0, height / 2.0
 
+        # initial_camera_matrix = np.array([
+        #     [fx, 0, cx],
+        #     [0, fy, cy],
+        #     [0, 0, 1]
+        # ], dtype=np.float32)
+
         initial_camera_matrix = np.array([
-            [fx, 0, cx],
-            [0, fy, cy],
+            [1121, 0, 651],
+            [0, 1186, 383],
             [0, 0, 1]
         ], dtype=np.float32)
 
@@ -116,9 +123,22 @@ class StereoCalibration:
         params = cv2.aruco.DetectorParameters()
         aruco_detector = cv2.aruco.ArucoDetector(self.charuco_board.aruco_dict, params)
 
+        counter = 0
+        self.left_frame_size = (1280, 720)
+        self.right_frame_size = (1280, 720)
+        left_interp_counter, right_interp_counter = 0, 0
+        self.imgs_l, self.imgs_r = [], []
         for img_left_path, img_right_path in tqdm(zip(self.left_images_path, self.right_images_path),
                                                   total=len(self.left_images_path),
                                                   desc="Processing calibration images"):
+            counter += 1
+            if counter % 5 != 0:
+                continue            
+
+            if len(self.stereo_obj_points) > 300:
+                print("got 300 image pairs")
+                break
+
             img_l = cv2.imread(img_left_path, cv2.IMREAD_COLOR)
             img_r = cv2.imread(img_right_path, cv2.IMREAD_COLOR)
 
@@ -128,10 +148,26 @@ class StereoCalibration:
             if self.frame_size is None:
                 self.frame_size = gray_l.shape
             else:
+                # TODO: change this later
                 assert self.frame_size == gray_l.shape == gray_r.shape
+                # pass
 
             corners_l, ids_l, rejected_img_points_l = aruco_detector.detectMarkers(gray_l)
             corners_r, ids_r, rejected_img_points_r = aruco_detector.detectMarkers(gray_r)
+
+            print("=== image number: ", counter)
+            # print("Number of corners detected in left image: ", len(corners_l))
+            # print("Number of corners detected in right image: ", len(corners_r))
+
+            if ids_l is None:
+                print(colored(f"No aruco markers found in left image {img_left_path.split('/')[-1]}", "red"))
+            if ids_r is None:
+                print(colored(f"No aruco markers found in right image {img_right_path.split('/')[-1]}", "red"))
+
+            # img_markers = cv2.aruco.drawDetectedMarkers(gray_l.copy(), corners_l, ids_l)
+            # cv2.imshow("Markers", img_markers)
+            # print("Detected marker IDs:", ids_l.ravel())
+            # print("Charuco board marker IDs:", self.charuco_board.board.getIds().ravel())
 
             if ids_l is not None and ids_r is not None:
                 retval_l, charuco_corners_l, charuco_ids_l = cv2.aruco.interpolateCornersCharuco(corners_l, ids_l,
@@ -140,9 +176,20 @@ class StereoCalibration:
                 retval_r, charuco_corners_r, charuco_ids_r = cv2.aruco.interpolateCornersCharuco(corners_r, ids_r,
                                                                                                  gray_r,
                                                                                                  self.charuco_board.board)
+                
+                # print("--", retval_l, retval_r)
+                if retval_l > 0:
+                    print("Number of interpolations: ", retval_l)
+                    left_interp_counter += 1
+
+                if retval_r > 0:
+                    print("Number of interpolations: ", retval_r)
+                    right_interp_counter += 1
+
+
                 if charuco_corners_l is None or charuco_corners_r is None:
                     continue
-
+                
                 if retval_l > self._min_points and retval_r > self._min_points:
                     obj_pts_l, img_pts_l = cv2.aruco.getBoardObjectAndImagePoints(self.charuco_board.board,
                                                                                   charuco_corners_l,
@@ -150,12 +197,37 @@ class StereoCalibration:
                     obj_pts_r, img_pts_r = cv2.aruco.getBoardObjectAndImagePoints(self.charuco_board.board,
                                                                                   charuco_corners_r,
                                                                                   charuco_ids_r)
+                    
+                    # make sure img_pts_l and img_pts_r are within range
+                    width, height = 1280, 720
+                    x = img_pts_l[:, 0, 0]
+                    y = img_pts_l[:, 0, 1]
+                    if np.any(x < 0) or np.any(x > width) or np.any(y < 0) or np.any(y > height):
+                        print(f"Left Image {counter} has corners out of bounds!")
+                        breakpoint()
+                    x = img_pts_r[:, 0, 0]
+                    y = img_pts_r[:, 0, 1]
+                    if np.any(x < 0) or np.any(x > width) or np.any(y < 0) or np.any(y > height):
+                        print(f"Right Image {counter} has corners out of bounds!")
+                        breakpoint()
+
 
                     pts_l = {tuple(a): tuple(b) for a, b in zip(obj_pts_l[:, 0], img_pts_l[:, 0])}
                     pts_r = {tuple(a): tuple(b) for a, b in zip(obj_pts_r[:, 0], img_pts_r[:, 0])}
                     ids_l = {tuple(a): b for a, b in zip(obj_pts_l[:, 0], charuco_ids_l[:, 0])}
                     ids_r = {tuple(a): b for a, b in zip(obj_pts_r[:, 0], charuco_ids_r[:, 0])}
                     common_pts = set(pts_l.keys()) & set(pts_r.keys())
+                    print("common_pts: ", common_pts)
+
+                    # has_gt_one = any(val > 1.0 for point in common_pts for val in point)
+                    # if has_gt_one:
+                    #     print(has_gt_one)
+                    #     breakpoint()
+                    
+                    # Added by Arpit
+                    print(len(pts_l), len(pts_r), len(common_pts))
+                    if len(common_pts) < self._min_points:
+                        continue
 
                     obj = np.zeros((len(common_pts), 1, 3), dtype=np.float32)
                     left_corners = np.zeros((len(common_pts), 1, 2), dtype=np.float32)
@@ -166,6 +238,7 @@ class StereoCalibration:
                         obj[i] = pts
                         left_corners[i] = np.reshape(pts_l[pts], (1, 2))
                         right_corners[i] = np.reshape(pts_r[pts], (1, 2))
+                        # print("left_corenrs, right_coreners: ", left_corners)
                         left_corner_ids[i] = ids_l[pts]
                         right_corner_ids[i] = ids_r[pts]
 
@@ -174,27 +247,70 @@ class StereoCalibration:
                     self.stereo_charuco_points_r.append(right_corners)
                     self.stereo_charuco_ids_l.append(left_corner_ids)
                     self.stereo_charuco_ids_r.append(right_corner_ids)
+                    self.imgs_l.append(img_l)
+                    self.imgs_r.append(img_r)
+                    # breakpoint()
 
         assert len(self.stereo_obj_points) == len(self.stereo_charuco_points_l) == len(
             self.stereo_charuco_points_r) == len(
             self.stereo_charuco_ids_l) == len(self.stereo_charuco_ids_r)
 
+        print("Number of filtered images (will be used for stereo calibration): ", len(self.stereo_obj_points))
+        # breakpoint()
+
         init_camera_matrix = self.init_camera_matrix()
 
+        # for j in range(len(self.stereo_charuco_points_l)):
+        #     print(self.stereo_charuco_points_l[j].shape, self.stereo_charuco_points_r[j].shape)
+
         # left camera calibration
+        print("starting left camera calibration")
         self.left_camera_calib_results = self.calibrate_camera(charuco_points=self.stereo_charuco_points_l,
                                                                charuco_ids=self.stereo_charuco_ids_l,
                                                                initial_camera_matrix=init_camera_matrix,
-                                                               criteria=self.criteria)
+                                                               criteria=self.criteria,
+                                                               frame_size=self.left_frame_size)
+        print("left camera calibration completed")
 
         # right camera calibration
+        print("starting right camera calibration")
         self.right_camera_calib_results = self.calibrate_camera(charuco_points=self.stereo_charuco_points_r,
                                                                 charuco_ids=self.stereo_charuco_ids_r,
                                                                 initial_camera_matrix=init_camera_matrix,
-                                                                criteria=self.criteria)
+                                                                criteria=self.criteria,
+                                                                frame_size=self.right_frame_size)
+        print("right camera calibration completed")
+
+        print("left_intr: ", self.left_camera_calib_results.camera_matrix, self.left_camera_calib_results.rms_reprojection_error)
+        print("right_intr: ", self.right_camera_calib_results.camera_matrix, self.right_camera_calib_results.rms_reprojection_error)
+        # breakpoint()
+
+        # visualize                 
+        # objpoints_list and imgpoints_list should be the same lists used for calibrateCameraCharuco
+        # camera_matrix, dist_coeffs are results from calibration
+        
+        def draw_reprojections(img, objpoints, imgpoints, camera_matrix, dist_coeffs, rvec, tvec):
+            proj, _ = cv2.projectPoints(objpoints, rvec, tvec, camera_matrix, dist_coeffs)
+            vis = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR) if len(img.shape)==2 else img.copy()
+            for p_obs, p_proj in zip(np.array(imgpoints).reshape(-1,2), proj.reshape(-1,2)):
+                cv2.circle(vis, tuple(p_obs.astype(int)), 3, (0,255,0), -1)   # observed (green)
+                cv2.circle(vis, tuple(p_proj.astype(int)), 3, (0,0,255), -1)  # reprojected (red)
+            return vis
+
+        # # Example for the i-th calibration image:
+        # vis = draw_reprojections(imgs_r[0],
+        #                         self.stereo_obj_points[0],
+        #                         self.stereo_charuco_points_r[0],
+        #                         self.right_camera_calib_results.camera_matrix,
+        #                         self.right_camera_calib_results.dist_coeffs,
+        #                         self.right_camera_calib_results.rotation_vectors[0],
+        #                         self.right_camera_calib_results.translation_vectors[0])
+        # cv2.imshow("reproj", vis); cv2.waitKey(0); cv2.destroyAllWindows()
+
 
         if self.left_camera_calib_results.rms_reprojection_error > self.max_allowable_rms_error or \
                 self.right_camera_calib_results.rms_reprojection_error > self.max_allowable_rms_error:
+            print("Will recalibrate!")
             self.recalibrate = True
             self.select_best_calib_images()
 
@@ -202,7 +318,8 @@ class StereoCalibration:
                          charuco_points: List[np.ndarray],
                          charuco_ids: List[np.ndarray],
                          initial_camera_matrix: np.ndarray,
-                         criteria: Tuple[int, int, float]) -> CameraCalibrationData:
+                         criteria: Tuple[int, int, float],
+                         frame_size) -> CameraCalibrationData:
         """
         Calibrate a camera.
 
@@ -219,15 +336,32 @@ class StereoCalibration:
         flags |= cv2.CALIB_USE_INTRINSIC_GUESS
         flags |= cv2.CALIB_RATIONAL_MODEL
 
+        # flags_no_guess = flags & ~cv2.CALIB_USE_INTRINSIC_GUESS  # remove that bit
+
+        print("start calibrateCameraCharuco")
+        width, height = 1280, 720
+        # breakpoint()
+
+        for i, corners in enumerate(charuco_points):
+            # print(corners.shape)
+            # breakpoint()
+            # corners has shape (N, 1, 2)
+            x = corners[:, 0, 0]
+            y = corners[:, 0, 1]
+            
+            if np.any(x < 0) or np.any(x > width) or np.any(y < 0) or np.any(y > height):
+                print(f"Image {i} has corners out of bounds!")
+
         retval, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
             charucoCorners=charuco_points,
             charucoIds=charuco_ids,
             board=self.charuco_board.board,
-            imageSize=self.frame_size,
+            imageSize=frame_size,
             cameraMatrix=initial_camera_matrix,
             distCoeffs=None,
             flags=flags,
             criteria=criteria)
+        print("end calibrateCameraCharuco")
 
         image_width, image_height = self.frame_size[::-1]
 
@@ -311,12 +445,21 @@ class StereoCalibration:
         self.left_camera_calib_results = self.calibrate_camera(charuco_points=self.stereo_charuco_points_l,
                                                                charuco_ids=self.stereo_charuco_ids_l,
                                                                initial_camera_matrix=self.left_camera_calib_results.camera_matrix,
-                                                               criteria=self.criteria)
+                                                               criteria=self.criteria,
+                                                               frame_size=self.left_frame_size)
 
         self.right_camera_calib_results = self.calibrate_camera(charuco_points=self.stereo_charuco_points_r,
                                                                 charuco_ids=self.stereo_charuco_ids_r,
                                                                 initial_camera_matrix=self.right_camera_calib_results.camera_matrix,
-                                                                criteria=self.criteria)
+                                                                criteria=self.criteria,
+                                                                frame_size=self.right_frame_size)
+        
+        print("After recalibration:")
+        print("Number of images for recalibration: ", len(self.best_calib_images_indices))
+        print("left_intr: ", self.left_camera_calib_results.camera_matrix, self.left_camera_calib_results.rms_reprojection_error)
+        print("right_intr: ", self.right_camera_calib_results.camera_matrix, self.right_camera_calib_results.rms_reprojection_error)
+        # breakpoint()
+
 
     def calibrate(self) -> StereoCalibrationData:
         """
@@ -335,6 +478,8 @@ class StereoCalibration:
         else:
             flags |= cv2.CALIB_USE_INTRINSIC_GUESS
 
+        print("Starting stereo calibration!")
+        # breakpoint()
         ret_stereo, new_camera_matrix_l, new_dist_coeffs_l, new_camera_matrix_r, new_dist_coeffs_r, rot, trans, \
             essential_matrix, fundamental_matrix = cv2.stereoCalibrate(objectPoints=self.stereo_obj_points,
                                                                        imagePoints1=self.stereo_charuco_points_l,
@@ -362,12 +507,21 @@ class StereoCalibration:
             imageSize=self.frame_size[::-1],
             R=rot,
             T=trans,
-            flags=cv2.CALIB_ZERO_DISPARITY, alpha=-1)
+            flags=cv2.CALIB_ZERO_DISPARITY, 
+            alpha=-0.7)
+
+        image_size = (1280, 720)
+        newCamMatrix_left, roi_left = cv2.getOptimalNewCameraMatrix(
+            new_camera_matrix_l, new_dist_coeffs_l, image_size, alpha=0)  # alpha=0 crops to valid pixels
+
+        newCamMatrix_right, roi_right = cv2.getOptimalNewCameraMatrix(
+            new_camera_matrix_r, new_dist_coeffs_r, image_size, alpha=0)
 
         stereo_rectify_map_l_x, stereo_rectify_map_l_y = cv2.initUndistortRectifyMap(cameraMatrix=new_camera_matrix_l,
                                                                                      distCoeffs=new_dist_coeffs_l,
                                                                                      R=rect_l,
-                                                                                     newCameraMatrix=proj_matrix_l,
+                                                                                     newCameraMatrix=proj_matrix_l,                                                                                     
+                                                                                    #  newCameraMatrix=newCamMatrix_left,
                                                                                      size=self.frame_size[::-1],
                                                                                      m1type=cv2.CV_16SC2)
 
@@ -375,6 +529,7 @@ class StereoCalibration:
                                                                                      distCoeffs=new_dist_coeffs_r,
                                                                                      R=rect_r,
                                                                                      newCameraMatrix=proj_matrix_r,
+                                                                                    #  newCameraMatrix=newCamMatrix_right,
                                                                                      size=self.frame_size[::-1],
                                                                                      m1type=cv2.CV_16SC2)
 
@@ -382,6 +537,65 @@ class StereoCalibration:
         self.left_camera_calib_results.stereo_rectify_map_y = stereo_rectify_map_l_y
         self.right_camera_calib_results.stereo_rectify_map_x = stereo_rectify_map_r_x
         self.right_camera_calib_results.stereo_rectify_map_y = stereo_rectify_map_r_y
+
+        # ===================================
+        for i in range(len(self.imgs_l)):
+            left_img = self.imgs_l[i]
+            right_img = self.imgs_r[i]
+            img_size = left_img.shape
+
+            params = cv2.aruco.DetectorParameters()
+            aruco_detector = cv2.aruco.ArucoDetector(self.charuco_board.aruco_dict, params)
+            
+            def detect_charuco(img):
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                corners, ids, _ = aruco_detector.detectMarkers(gray)
+                charuco_ids = None
+                if ids is not None and len(ids) > 0:
+                    _, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(corners, ids, gray, self.charuco_board.board)
+                    if charuco_corners is not None and len(charuco_corners) > 0:
+                        cv2.aruco.drawDetectedCornersCharuco(img, charuco_corners, charuco_ids, (0, 0, 255))
+                return img, charuco_ids
+
+            left_rect = cv2.remap(left_img, stereo_rectify_map_l_x, stereo_rectify_map_l_y, cv2.INTER_LINEAR)
+            right_rect = cv2.remap(right_img, stereo_rectify_map_r_x, stereo_rectify_map_r_y, cv2.INTER_LINEAR)
+
+            # # Compute valid overlap region (intersection of ROI_l and ROI_r)
+            # x1 = max(roi_l[0], roi_r[0])
+            # y1 = max(roi_l[1], roi_r[1])
+            # x2 = min(roi_l[0] + roi_l[2], roi_r[0] + roi_r[2])
+            # y2 = min(roi_l[1] + roi_l[3], roi_r[1] + roi_r[3])
+
+            # # Crop both images to valid region
+            # left_rect  = left_rect[y1:y2, x1:x2]
+            # right_rect = right_rect[y1:y2, x1:x2]
+
+            left_anno, left_charuco_ids = detect_charuco(left_rect.copy())
+            right_anno, right_charuco_ids = detect_charuco(right_rect.copy())
+            if left_charuco_ids is not None and right_charuco_ids is not None:
+                common_ids = np.intersect1d(left_charuco_ids, right_charuco_ids)
+                print("i, len(common_ids): ", i, len(common_ids))
+            else:
+                print(f"{i}, None")
+
+            # # Step 3: Detect checkerboard corners
+            # swapped_l = self.stereo_charuco_points_l[0][:, :, ::-1] 
+            # swapped_r = self.stereo_charuco_points_r[0][:, :, ::-1]
+            # cv2.aruco.drawDetectedCornersCharuco(left_rect, swapped_l, swapped_r, (0, 0, 255))
+            # cv2.aruco.drawDetectedCornersCharuco(right_rect, self.stereo_charuco_points_r[0], self.stereo_charuco_ids_r[0], (0, 0, 255))
+
+            # import matplotlib.pyplot as plt
+            # # breakpoint()
+
+            # # Draw epipolar lines on combined image
+            # combined = np.hstack((left_anno, right_anno))
+            # for y in range(0, img_size[0], 50):
+            #     cv2.line(combined, (0, y), (2 * img_size[1], y), (0, 255, 0), 1)
+
+            # cv2.imshow("Rectified Stereo with Checkerboard + Epipolar Lines", combined)
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
+        # ===================================
 
         logger.success("Calibration complete!")
         logger.info(f"Stereo Calibration result: RMS error = {ret_stereo:.4f}")
@@ -398,7 +612,13 @@ class StereoCalibration:
                                      fundamental_matrix=fundamental_matrix,
                                      projection_matrix_left=proj_matrix_l,
                                      projection_matrix_right=proj_matrix_r,
-                                     perspective_transformation_matrix_Q=Q)
+                                     perspective_transformation_matrix_Q=Q,
+                                     transform_r_to_l=None,
+                                     left_cam_to_base_transform=None,
+                                     right_cam_to_base_transform=None,
+                                     left_cam_serial_id=None,
+                                     right_cam_serial_id=None,
+                                     robot_joint_vals=None)
 
     def log_calib_info(self):
         logger.info(f"Left Camera Calibration: RMS error = {self.left_camera_calib_results.rms_reprojection_error:.4f}")

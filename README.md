@@ -28,6 +28,9 @@
 Stereo Calib is a project dedicated to performing stereo camera calibration using Charuco boards, followed by
 rectification, disparity map generation, and depth map estimation.
 
+## Some key points
+1. Corner detection sometimes fails with low resolution images (failing for 640x480 for mocap camera but working for 640x480 for realsense camera)
+
 ## Getting Started
 
 ### Setup

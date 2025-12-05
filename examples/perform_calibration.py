@@ -34,6 +34,7 @@ def main():
                                                                marker_length=C.MARKER_LENGTH))
 
     calib: StereoCalibration = StereoCalibration(data_path=data_path, charuco_board=charuco_board)
+    breakpoint()
     calib_results: utils.StereoCalibrationData = calib.calibrate()
 
     utils.save_rectified_stereo_images_with_disparity_and_depth_maps(calib.left_images_path,

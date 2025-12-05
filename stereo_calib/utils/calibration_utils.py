@@ -8,7 +8,7 @@ from loguru import logger
 from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json, config
 from typing import List, Tuple, Union, Optional
-
+# import open3d as o3d
 
 @dataclass_json
 @dataclass
@@ -78,6 +78,13 @@ class StereoCalibrationData:
     fundamental_matrix: np.ndarray = field(metadata=config(decoder=np.asarray))
     perspective_transformation_matrix_Q: np.ndarray = field(metadata=config(decoder=np.asarray))
 
+    # add a transform from right to left camera
+    transform_r_to_l: Optional[np.ndarray] = field(metadata=config(decoder=np.asarray))
+    left_cam_to_base_transform: Optional[np.ndarray] = field(metadata=config(decoder=np.asarray))
+    right_cam_to_base_transform: Optional[np.ndarray] = field(metadata=config(decoder=np.asarray))
+    left_cam_serial_id: Optional[str] = field(metadata=config(decoder=str))
+    right_cam_serial_id: Optional[str] = field(metadata=config(decoder=str))
+    robot_joint_vals: Optional[np.ndarray] = field(metadata=config(decoder=np.asarray))
 
 class CustomJSONEncoder(JSONEncoder):
     """
@@ -202,3 +209,279 @@ def load_calibration_data(file_path: Union[str, Path]) -> StereoCalibrationData:
         return stereo_calib_data
     else:
         raise FileNotFoundError(f"File '{str(file_path)}' not found or is not a file.")
+
+
+class SimpleStereoCalibFromJSON:
+    """
+    A simplified wrapper class for stereo calibration data loaded from JSON.
+    This class provides easy access to the most commonly used calibration parameters.
+    """
+
+    def __init__(self, json_file_path: Union[str, Path]):
+        """
+        Initialize the class by loading calibration data from a JSON file.
+
+        Args:
+            json_file_path (Union[str, Path]): Path to the calibration results JSON file
+        """
+        if isinstance(json_file_path, str):
+            json_file_path = Path(json_file_path)
+
+        if not json_file_path.exists():
+            raise FileNotFoundError(f"Calibration file not found: {json_file_path}")
+
+        # Load the full calibration data
+        self._full_calib_data = load_calibration_data(json_file_path)
+
+        # Extract commonly used parameters
+        self._extract_parameters()
+
+    def _extract_parameters(self):
+        """Extract commonly used parameters from the full calibration data."""
+        # Camera matrices
+        self.left_camera_matrix = self._full_calib_data.left_camera_calibration_data.camera_matrix
+        self.right_camera_matrix = self._full_calib_data.right_camera_calibration_data.camera_matrix
+
+        # Distortion coefficients
+        self.left_dist_coeffs = self._full_calib_data.left_camera_calibration_data.dist_coeffs
+        self.right_dist_coeffs = self._full_calib_data.right_camera_calibration_data.dist_coeffs
+
+        # Stereo extrinsics
+        self.rot = self._full_calib_data.rot
+        self.trans = self._full_calib_data.trans
+
+        # Rectification transforms
+        self.left_rect_transform = self._full_calib_data.left_camera_rectification_transform
+        self.right_rect_transform = self._full_calib_data.right_camera_rectification_transform
+
+        # Projection matrices
+        self.projection_matrix_left = self._full_calib_data.projection_matrix_left
+        self.projection_matrix_right = self._full_calib_data.projection_matrix_right
+
+        # Essential and fundamental matrices
+        self.essential_matrix = self._full_calib_data.essential_matrix
+        self.fundamental_matrix = self._full_calib_data.fundamental_matrix
+
+        # Perspective transformation matrix
+        self.perspective_transform_Q = self._full_calib_data.perspective_transformation_matrix_Q
+
+        # Additional robot-specific transforms (if available)
+        self.transform_r_to_l = getattr(self._full_calib_data, 'transform_r_to_l', None)
+        self.left_cam_to_base_transform = getattr(self._full_calib_data, 'left_cam_to_base_transform', None)
+        self.right_cam_to_base_transform = getattr(self._full_calib_data, 'right_cam_to_base_transform', None)
+        self.left_cam_serial_id = getattr(self._full_calib_data, 'left_cam_serial_id', None)
+        self.right_cam_serial_id = getattr(self._full_calib_data, 'right_cam_serial_id', None)
+        self.robot_joint_vals = getattr(self._full_calib_data, 'robot_joint_vals', None)
+
+    @property
+    def left_camera_to_base(self):
+        """Alias for left_cam_to_base_transform for backward compatibility."""
+        return self.left_cam_to_base_transform
+
+    def get_camera_matrix(self, camera_side: str = 'left') -> np.ndarray:
+        """
+        Get camera matrix for the specified camera side.
+
+        Args:
+            camera_side (str): Either 'left' or 'right'
+
+        Returns:
+            np.ndarray: Camera matrix
+        """
+        if camera_side.lower() == 'left':
+            return self.left_camera_matrix
+        elif camera_side.lower() == 'right':
+            return self.right_camera_matrix
+        else:
+            raise ValueError("camera_side must be 'left' or 'right'")
+
+    def get_dist_coeffs(self, camera_side: str = 'left') -> np.ndarray:
+        """
+        Get distortion coefficients for the specified camera side.
+
+        Args:
+            camera_side (str): Either 'left' or 'right'
+
+        Returns:
+            np.ndarray: Distortion coefficients
+        """
+        if camera_side.lower() == 'left':
+            return self.left_dist_coeffs
+        elif camera_side.lower() == 'right':
+            return self.right_dist_coeffs
+        else:
+            raise ValueError("camera_side must be 'left' or 'right'")
+
+    def get_image_dim(self, camera_side: str = 'left') -> Tuple[int, int]:
+        """
+        Get image dimensions for the specified camera side.
+
+        Args:
+            camera_side (str): Either 'left' or 'right'
+
+        Returns:
+            Tuple[int, int]: Image dimensions (width, height)
+        """
+        if camera_side.lower() == 'left':
+            return self.left_image_dim
+        elif camera_side.lower() == 'right':
+            return self.right_image_dim
+        else:
+            raise ValueError("camera_side must be 'left' or 'right'")
+
+    def __repr__(self):
+        return f"SimpleStereoCalibFromJSON(left_cam={self.left_cam_serial_id}, right_cam={self.right_cam_serial_id})"
+
+
+def fuse_stereo_pointclouds_live(
+    stereo_calib: 'SimpleStereoCalibFromJSON',
+    left_rgb_path: Union[str, Path],
+    left_depth_path: Union[str, Path],
+    right_rgb_path: Union[str, Path],
+    right_depth_path: Union[str, Path],
+    extra_transform: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Fuse stereo point clouds from RGB and depth images using calibration data.
+    
+    This function loads RGB and depth images from both cameras, creates point clouds,
+    transforms the right camera points to the left camera coordinate system, and fuses them.
+    
+    Args:
+        stereo_calib (SimpleStereoCalibFromJSON): Stereo calibration data
+        left_rgb_path (Union[str, Path]): Path to left RGB image
+        left_depth_path (Union[str, Path]): Path to left depth image (.npy file)
+        right_rgb_path (Union[str, Path]): Path to right RGB image
+        right_depth_path (Union[str, Path]): Path to right depth image (.npy file)
+        extra_transform (Optional[np.ndarray]): Optional 4x4 transformation matrix to apply
+    
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: (points, colors) where points is (N, 3) and colors is (N, 3)
+    
+    Raises:
+        FileNotFoundError: If any of the image files don't exist
+        ValueError: If depth images have invalid dimensions or values
+    """
+    import cv2
+    import open3d as o3d
+    
+    # Convert paths to Path objects
+    left_rgb_path = Path(left_rgb_path)
+    left_depth_path = Path(left_depth_path) if left_depth_path else None
+    right_rgb_path = Path(right_rgb_path)
+    right_depth_path = Path(right_depth_path) if right_depth_path else None
+    
+    # Check if files exist
+    if not left_rgb_path.exists():
+        raise FileNotFoundError(f"Left RGB image not found: {left_rgb_path}")
+    if not right_rgb_path.exists():
+        raise FileNotFoundError(f"Right RGB image not found: {right_rgb_path}")
+    
+    # Load RGB images
+    left_rgb = cv2.imread(str(left_rgb_path))
+    right_rgb = cv2.imread(str(right_rgb_path))
+    
+    if left_rgb is None:
+        raise ValueError(f"Failed to load left RGB image: {left_rgb_path}")
+    if right_rgb is None:
+        raise ValueError(f"Failed to load right RGB image: {right_rgb_path}")
+    
+    # Convert BGR to RGB
+    left_rgb = cv2.cvtColor(left_rgb, cv2.COLOR_BGR2RGB)
+    right_rgb = cv2.cvtColor(right_rgb, cv2.COLOR_BGR2RGB)
+    
+    # Load depth images if available
+    left_depth = None
+    right_depth = None
+    
+    if left_depth_path and left_depth_path.exists():
+        left_depth = np.load(str(left_depth_path))
+        if left_depth.ndim == 3 and left_depth.shape[2] == 1:
+            left_depth = left_depth.squeeze()
+    
+    if right_depth_path and right_depth_path.exists():
+        right_depth = np.load(str(right_depth_path))
+        if right_depth.ndim == 3 and right_depth.shape[2] == 1:
+            right_depth = right_depth.squeeze()
+    
+    # Create point clouds from depth images
+    left_points = None
+    left_colors = None
+    right_points = None
+    right_colors = None
+    
+    # Process left camera
+    if left_depth is not None:
+        left_pcd = _pcd_from_depth(left_depth, stereo_calib.left_camera_matrix)
+        if left_pcd is not None:
+            left_points = np.asarray(left_pcd.points)
+            left_colors = left_rgb.reshape(-1, 3)
+    
+    # Process right camera
+    if right_depth is not None:
+        right_pcd = _pcd_from_depth(right_depth, stereo_calib.right_camera_matrix)
+        if right_pcd is not None:
+            right_points = np.asarray(right_pcd.points)
+            right_colors = right_rgb.reshape(-1, 3)
+            
+            # Transform right camera points to left camera coordinate system
+            if len(right_points) > 0:
+                # Apply the transform from right to left camera
+                if stereo_calib.transform_r_to_l is not None:
+                    # Add homogeneous coordinate
+                    right_points_homo = np.concatenate((right_points, np.ones((right_points.shape[0], 1))), axis=-1)
+                    # Apply transformation
+                    right_points_transformed = (stereo_calib.transform_r_to_l @ right_points_homo.T).T
+                    right_points = right_points_transformed[:, :3]
+    
+    # Combine point clouds
+    all_points = []
+    all_colors = []
+    
+    if left_points is not None and len(left_points) > 0:
+        all_points.append(left_points)
+        all_colors.append(left_colors)
+    
+    if right_points is not None and len(right_points) > 0:
+        all_points.append(right_points)
+        all_colors.append(right_colors)
+    
+    if not all_points:
+        logger.warning("No valid points found in either camera")
+        return np.array([]).reshape(0, 3), np.array([]).reshape(0, 3)
+    
+    # Concatenate all points and colors
+    fused_points = np.concatenate(all_points, axis=0)
+    fused_colors = np.concatenate(all_colors, axis=0)
+    
+    if extra_transform is not None:
+        fused_points = (extra_transform @ np.concatenate((fused_points, np.ones((fused_points.shape[0], 1))), axis=-1).T).T
+        fused_points = fused_points[:, :3]
+    
+    return fused_points, fused_colors
+
+
+def _pcd_from_depth(
+    depth,
+    intrinsic_matrix,
+    depth_trunc=5,
+    depth_scale=1000,
+):
+    """
+    Copy of the pcd_from_depth function from grx.utils.misc_utils
+    """
+    width, height = depth.shape[:2]
+
+    pinholecameraIntrinsic = o3d.camera.PinholeCameraIntrinsic(
+        width, height,
+        intrinsic_matrix=intrinsic_matrix
+    )
+
+    pcd = o3d.geometry.PointCloud.create_from_depth_image(
+        o3d.geometry.Image(depth.astype(np.uint16)),
+        pinholecameraIntrinsic,
+        depth_trunc=depth_trunc,
+        depth_scale=depth_scale,
+        project_valid_depth_only=False,
+    )
+    return pcd
