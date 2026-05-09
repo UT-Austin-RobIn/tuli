@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>stereo_calib</name>
+  <version>0.1.0</version>
+  <description>
+    RViz visualization + ROS1 nodes for the qualisys + 3 RealSense calibration tree.
+    The Python library itself is poetry-managed; this package.xml exists so roslaunch
+    can find launch files and node scripts via `pkg="stereo_calib"`.
+
+    Usage: add the repo directory to ROS_PACKAGE_PATH, e.g.
+      export ROS_PACKAGE_PATH=$HOME/Desktop/stereo-calib:$ROS_PACKAGE_PATH
+  </description>
+  <maintainer email="danielsjsamo05@gmail.com">Daniel</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>nodelet</exec_depend>
+  <exec_depend>depth_image_proc</exec_depend>
+  <exec_depend>rosbag</exec_depend>
+  <exec_depend>rviz</exec_depend>
+</package>

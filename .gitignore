@@ -163,3 +163,5 @@ cython_debug/
 # custom folders
 results/
 dataset/
+calib_data/
+*.mp4
