@@ -1,8 +1,11 @@
 <launch>
-  <!-- === PARAMETERS === -->
-  <!-- Change these if your bag name or camera frame differs -->
-  <!-- <arg name="bag_file" default="$(find your_package_name)/bags/your_data.bag"/>
-  <arg name="fixed_frame" default="cam_L_color_optical_frame"/> -->
+  <!-- Runtime arguments -->
+  <arg name="bag_file" default="$(env HOME)/infants/data/smoke_test/20260302_235500_smoke.bag"/>
+  <arg name="rviz_config" default="$(env HOME)/infants/launch/rviz.rviz"/>
+  <arg name="fixed_frame" default="cam_L_color_optical_frame"/>
+  <arg name="loop_bag" default="true"/>
+
+  <param name="/use_sim_time" value="true"/>
 
   <!-- === 1. Nodelet Manager === -->
   <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager"/>
@@ -17,11 +20,12 @@
   </node>
 
   <!-- === 3. Rosbag Playback === -->
-  <node pkg="rosbag" type="play" name="bag_player" args="--clock --loop $(arg bag_file)" />
+  <node pkg="rosbag" type="play" name="bag_player" args="--clock --loop $(arg bag_file)" if="$(arg loop_bag)"/>
+  <node pkg="rosbag" type="play" name="bag_player_once" args="--clock $(arg bag_file)" unless="$(arg loop_bag)"/>
 
   <!-- === 4. RViz Visualization === -->
-  <!-- <node pkg="rviz" type="rviz" name="rviz"
-        args="-d $(find your_package_name)/rviz/view_pointcloud.rviz">
+  <node pkg="rviz" type="rviz" name="rviz"
+        args="-d $(arg rviz_config)">
     <env name="ROS_NAMESPACE" value="/"/>
-  </node> -->
+  </node>
 </launch>

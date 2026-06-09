@@ -4,3 +4,9 @@ data/
 
 *.avi
 *.bag
+*.pyc
+*.tsv
+.codex
+.ros
+.transfer_data.log
+deprecated

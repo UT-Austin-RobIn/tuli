@@ -2,41 +2,49 @@
 	<include file="$(find realsense2_camera)/launch/rs_camera.launch">
 		<arg name="camera" value="cam_L"/>
 		<arg name="serial_no" value="332322072918"/>
+		<arg name="usb_port_id" value=""/>
+		<arg name="respawn" value="true"/>
 		<arg name="align_depth" value="true"/>
+        <arg name="depth_width" value="640"/>
+        <arg name="depth_height" value="480"/>
         <arg name="depth_fps" value="30"/>
         <arg name="color_fps" value="30"/>
         <arg name="enable_sync" value="true"/>
-        <arg name="color_width" value="960"/>
-        <arg name="color_height" value="540"/>
+        <arg name="color_width" value="640"/>
+        <arg name="color_height" value="480"/>
 	</include>
 	<include file="$(find realsense2_camera)/launch/rs_camera.launch">
 		<arg name="camera" value="cam_M"/>
 		<arg name="serial_no" value="332522077342"/>
+		<arg name="usb_port_id" value=""/>
+		<arg name="respawn" value="true"/>
 		<arg name="align_depth" value="true"/>
+        <arg name="depth_width" value="640"/>
+        <arg name="depth_height" value="480"/>
         <arg name="depth_fps" value="30"/>
         <arg name="color_fps" value="30"/>
         <arg name="enable_sync" value="true"/>
-		<arg name="color_width" value="960"/>
-        <arg name="color_height" value="540"/>
+		<arg name="color_width" value="640"/>
+        <arg name="color_height" value="480"/>
 	</include> 
 	<include file="$(find realsense2_camera)/launch/rs_camera.launch">
 		<arg name="camera" value="cam_R"/>
 		<arg name="serial_no" value="327122075069"/>
+		<arg name="usb_port_id" value=""/>
+		<arg name="respawn" value="true"/>
 		<arg name="align_depth" value="true"/>
+        <arg name="depth_width" value="640"/>
+        <arg name="depth_height" value="480"/>
         <arg name="depth_fps" value="30"/>
         <arg name="color_fps" value="30"/>
         <arg name="enable_sync" value="true"/>
-		<arg name="color_width" value="960"/>
-        <arg name="color_height" value="540"/>
+		<arg name="color_width" value="640"/>
+        <arg name="color_height" value="480"/>
 	</include>
 	<include file="$(find audio_capture)/launch/capture.launch">
 		<arg name="ns" value="audio/"/>
 		<arg name="device" value="hw:1,0"/>
 		<arg name="sample_rate" value="44100"/>
   		<arg name="channels" value="1"/>
-  		<arg name="chunk_size" value="2048"/>
 	</include>
 </launch>
-
-
-

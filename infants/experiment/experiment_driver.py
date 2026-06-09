@@ -14,22 +14,24 @@ import paramiko
 
 from datetime import datetime
 from pathlib import Path
-from pynput import keyboard
+try:
+    from pynput import keyboard
+except Exception as e:
+    keyboard = None
+    _PYNPUT_IMPORT_ERROR = e
 from std_msgs.msg import String
 
-DATA_ROOT = Path("data")
+DATA_ROOT = Path("/home/robotlearning2/infants/data")
 AUDIO_RATE = 44100
 
 CONDITIONS = {
     'bang': """
-    1. Soft Board - Headphones			(low haptics,  low audio )
-    2. Soft Board - No Headphones 		(low haptics,  high audio)
-    3. Hard Board - Headphones 			(high haptics, low audio )
-    4. Hard Board - No Headphones 		(high haptics, high audio)
-    5. Wash Board - Headphones 			(high haptics, low audio )
-    6. Wash Board - No Headphones 		(high haptics, high audio)
-    7. Soft Board and Button - Headphones 	(high haptics, low audio )
-    8. Soft Board and Button - No Headphones 	(high haptics, high audio)
+    1. Soft Board - Sponge Cube			(low haptics,  low audio )
+    2. Soft Board - Soft Cube 		(low haptics,  high audio)
+    3. Soft Board - Hard Cube 			(high haptics, low audio )
+    4. Hard Board - Sponge Cube 		(high haptics, high audio)
+    5. Hard Board - Soft Cube			(high haptics, low audio )
+    6. Hard Board - Hard cube 		(high haptics, high audio)
     """,
     'slide': """
     1. washboard-sphere         (high haptic, high audio)
@@ -48,27 +50,83 @@ WINDOWS_PASSWORD = "1234"
 
 WindowsClient = paramiko.SSHClient()
 WindowsClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-WindowsClient.connect(WINDOWS_HOSTNAME, username=WINDOWS_USERNAME, password=WINDOWS_PASSWORD)
 
-def get_ntp_offset():
-    stdin, stdout, stderr = WindowsClient.exec_command('w32tm /stripchart /computer:192.168.253.201 /samples:6 /dataonly')
-    output = stdout.read().decode().strip()
-    values = re.findall(r'[+-]?\d+\.\d+s', output)
-    offsets = [float(v.rstrip('s')) for v in values]
-    mean_offset = sum(offsets[1:]) / len(offsets[1:])
-    return mean_offset
+def get_ntp_offset(retries=3, timeout_s=5):
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            proc = subprocess.run(
+                ["chronyc", "tracking"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                check=True,
+            )
+            output = proc.stdout
+            match = re.search(r"Last offset\\s*:\\s*([+-]?[0-9.]+)\\s*(seconds|s|ms|us|ns)", output)
+            if not match:
+                raise RuntimeError(f"chronyc tracking parse failed; output was: {output!r}")
+            value = float(match.group(1))
+            unit = match.group(2)
+            if unit == "seconds" or unit == "s":
+                pass
+            elif unit == "ms":
+                value /= 1_000.0
+            elif unit == "us":
+                value /= 1_000_000.0
+            elif unit == "ns":
+                value /= 1_000_000_000.0
+            return value
+        except Exception as e:
+            last_error = e
+            print(f"[WARN] NTP offset attempt {attempt}/{retries} failed: {e}")
+            time.sleep(0.5)
+    raise RuntimeError(f"NTP offset failed after {retries} attempts: {last_error}")
 
-def copy_subject_to_nas(subject_path: Path):
+def copy_and_cleanup_background(subject_path: Path):
+    """Spawn a detached background process to copy data to NAS and clean up locally."""
     dest_path = NAS_PATH / subject_path.name
-    print(f"[INFO] Copying subject data from {subject_path} to NAS at {dest_path} ...")
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        if dest_path.exists():
-            print(f"[WARN] NAS destination {dest_path} already exists, merging contents...")
-        shutil.copytree(subject_path, dest_path, dirs_exist_ok=True)
-        print("[INFO] Copy to NAS completed successfully.")
-    except Exception as e:
-        print(f"[ERROR] Failed to copy to NAS: {e}")
+    log_file = subject_path.parent / f".transfer_{subject_path.name}.log"
+
+    script = f"""
+import subprocess, shutil, sys
+from pathlib import Path
+
+subject = Path("{subject_path}")
+dest = Path("{dest_path}")
+log = open("{log_file}", "a")
+sys.stdout = log
+sys.stderr = log
+
+print("[BG] Starting rsync...")
+result = subprocess.run(
+    ["rsync", "-av", "--no-group", str(subject) + "/", str(dest) + "/"],
+    capture_output=True, text=True, timeout=3600
+)
+if result.returncode != 0:
+    print(f"[BG ERROR] rsync failed (code {{result.returncode}}): {{result.stderr}}")
+    sys.exit(1)
+
+print("[BG] rsync complete. Verifying sizes...")
+local_size = sum(f.stat().st_size for f in subject.rglob("*") if f.is_file())
+remote_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
+
+if remote_size < local_size * 0.99:
+    print(f"[BG ERROR] Size mismatch: local={{local_size}}, NAS={{remote_size}}. Keeping local data.")
+    sys.exit(1)
+
+print(f"[BG] Verified (local={{local_size}}, NAS={{remote_size}}). Removing local data...")
+shutil.rmtree(subject)
+print("[BG] Done. Local data removed.")
+"""
+    subprocess.Popen(
+        [sys.executable, "-c", script],
+        start_new_session=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(f"[INFO] Background transfer started for {subject_path.name}.")
+    print(f"[INFO] Check progress: cat {log_file}")
 
 def flush_stdin():
     fd = sys.stdin.fileno()
@@ -95,6 +153,8 @@ import json
 
 class ButtonLogger:
     def __init__(self):
+        if keyboard is None:
+            raise RuntimeError(f"pynput not available: {_PYNPUT_IMPORT_ERROR}")
         self.listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release
@@ -156,8 +216,18 @@ def make_subject_dir(subject_id: str) -> Path:
     subject_path.mkdir(parents=True, exist_ok=True)
     return subject_path
 
+def make_timestamp_subject_id() -> str:
+    """
+    Generate a human-readable, filesystem-safe timestamp for subject/session folders.
+    Example: 2026-05-01_09-58-00
+    """
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d_%H-%M-%S")
+
 
 def wait_for_keypress(target_key):
+    if keyboard is None:
+        raise RuntimeError(f"pynput not available: {_PYNPUT_IMPORT_ERROR}")
     print(f"Waiting for {target_key.name.upper()} press to continue...")
     key_pressed = threading.Event()
 
@@ -191,9 +261,13 @@ def run_trial(subject_path: Path, trial_number: int, condition_name: str, task_n
     metadata["start_time"] = datetime.now().isoformat()
     # Obtain the NTP offset
     print("[INFO] Obtaining NTP offset...")
-    ntp_offset = get_ntp_offset()
-    metadata["ntp_offset"] = ntp_offset
-    print(f"[DEBUG] NTP offset: {ntp_offset}")
+    try:
+        ntp_offset = get_ntp_offset()
+        metadata["ntp_offset"] = ntp_offset
+        print(f"[DEBUG] NTP offset: {ntp_offset}")
+    except Exception as e:
+        metadata["ntp_offset"] = None
+        print(f"[WARN] Failed to obtain NTP offset: {e}")
     
     print(f"[DEBUG] Trial started at {metadata['start_time']}")
 
@@ -266,7 +340,12 @@ def append_to_csv(subject_path: Path, metadata_dict):
 
 def main():
     rospy.init_node("experiment_driver", anonymous=True, disable_signals=True)
-    subject_id = input("Enter Subject ID: ").strip()
+    if keyboard is None:
+        print(f"[ERROR] pynput not available: {_PYNPUT_IMPORT_ERROR}")
+        print("[ERROR] This script requires an X display for keyboard input.")
+        return
+    subject_id = make_timestamp_subject_id()
+    print(f"[INFO] Subject ID (timestamp): {subject_id}")
     subject_path = make_subject_dir(subject_id)
     task = input("Enter task name [bang/slide/hammer]: ").strip()
     if task not in CONDITIONS:
@@ -318,9 +397,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] Experiment ended by user.")
 
-    # After experiment ends, copy to NAS
-    # TODO: copy after each trial and not at the end!
-    copy_subject_to_nas(subject_path)
+    # Copy to NAS and clean up in background so user can start next experiment immediately
+    copy_and_cleanup_background(subject_path)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Start a subset of RealSense cameras for calibration.
+# Usage: ./start_camera_for_calibration [--left] [--right] [--mid]
+# Mirrors camera configuration from launch/rs_cam.launch.
+
+source /opt/ros/noetic/setup.bash
+
+set -euo pipefail
+
+USE_LEFT=0
+USE_MID=0
+USE_RIGHT=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --left)  USE_LEFT=1 ;;
+    --mid)   USE_MID=1 ;;
+    --right) USE_RIGHT=1 ;;
+    -h|--help)
+      echo "Usage: $0 [--left] [--mid] [--right]"
+      exit 0
+      ;;
+    *)
+      echo "[ERROR] Unknown arg: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if (( USE_LEFT == 0 && USE_MID == 0 && USE_RIGHT == 0 )); then
+  echo "[ERROR] Must pass at least one of --left, --mid, --right" >&2
+  exit 1
+fi
+
+declare -A SERIALS=(
+  [cam_L]="332322072918"
+  [cam_M]="332522077342"
+  [cam_R]="327122075069"
+)
+
+CAMS=()
+TOPICS=()
+(( USE_LEFT ))  && CAMS+=("cam_L")
+(( USE_MID ))   && CAMS+=("cam_M")
+(( USE_RIGHT )) && CAMS+=("cam_R")
+
+for cam in "${CAMS[@]}"; do
+  TOPICS+=("/$cam/color/image_raw" "/$cam/aligned_depth_to_color/image_raw")
+done
+
+PIDS=()
+cleanup() {
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+}
+trap cleanup INT TERM
+
+echo "[INFO] Launching cameras: ${CAMS[*]}"
+for cam in "${CAMS[@]}"; do
+  roslaunch realsense2_camera rs_camera.launch \
+    camera:="$cam" \
+    serial_no:="${SERIALS[$cam]}" \
+    respawn:=true \
+    align_depth:=true \
+    depth_width:=1280 depth_height:=720 depth_fps:=30 \
+    color_width:=1280 color_height:=720 color_fps:=30 \
+    enable_sync:=true &
+  PIDS+=($!)
+done
+
+sleep 6
+
+deadline=$((SECONDS + 120))
+while (( SECONDS < deadline )); do
+  missing=()
+  for topic in "${TOPICS[@]}"; do
+    if ! timeout 2s rostopic echo -n 1 "$topic" >/dev/null 2>&1; then
+      missing+=("$topic")
+    fi
+  done
+
+  if (( ${#missing[@]} == 0 )); then
+    echo "[OK] All requested camera streams are publishing."
+    wait "${PIDS[@]}"
+    exit $?
+  fi
+
+  echo "[WAIT] Still waiting on ${#missing[@]} topic(s): ${missing[*]}"
+  sleep 5
+done
+
+echo "[ERROR] Timed out waiting for camera topics."
+echo "[ERROR] Missing topics: ${missing[*]}"
+cleanup
+exit 1

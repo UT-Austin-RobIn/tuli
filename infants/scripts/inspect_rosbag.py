@@ -8,7 +8,7 @@ from datetime import datetime
 import rosbag
 from datetime import datetime
 
-input_bag = "/home/robotlearning2/infants/data/0/trial_006/trial_ros.bag"  # path to your rosbag
+input_bag = "/home/robotlearning2/infants/data/055/trial_001/trial_ros.bag"  # path to your rosbag
 
 # Topics to synchronize
 topics_to_sync = [

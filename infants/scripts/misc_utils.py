@@ -3,6 +3,8 @@ import os
 import rosbag
 import pytz
 import shutil
+from bisect import bisect_left
+from pathlib import Path
 from cv_bridge import CvBridge
 from datetime import datetime
 
@@ -34,12 +36,8 @@ def resize_qualisys_frame(img):
     start_x = (h - target_h) // 2
     end_x = start_x + target_h
     img_cropped = img[start_x:end_x, :]   # shape ~ (544, 724, 3)
-    # breakpoint()
-
-    # # Resize to 640x480
-    # img_resized = cv2.resize(img_cropped, (640, 480), interpolation=cv2.INTER_AREA)
-    
-    return img_cropped
+    img_resized = cv2.resize(img_cropped, (1280, 720), interpolation=cv2.INTER_AREA)
+    return img_resized
 
 def extract_images_from_video(video_path="qualisys_video.avi", output_folder="qualisys_camera_images", resize_frame=True):
     # === Configuration ===
@@ -83,63 +81,146 @@ def save_frame(msg, count, output_folder):
     cv2.imwrite(filename, cv_img)
     print(f"Saved {filename}")
 
-def extract_images_from_ros(time_str,
+def qualisys_time_to_unix(time_str, timezone_name="America/Chicago"):
+    local_tz = pytz.timezone(timezone_name)
+    dt = datetime.strptime(time_str, "%Y-%m-%d, %H:%M:%S.%f")
+    localized_dt = local_tz.localize(dt)
+    return localized_dt.timestamp()
+
+def find_closest_ros_frame_start(target_unix_time,
+                                 topic_name="/cam_L/color/image_raw",
+                                 rosbag_path="/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag"):
+    best_diff = None
+    best_frame_idx = None
+    best_ros_time = None
+
+    with rosbag.Bag(rosbag_path) as bag:
+        frame_idx = 0
+        for topic, _, t in bag.read_messages(topics=[topic_name]):
+            ros_time = t.to_sec()
+            diff = abs(target_unix_time - ros_time)
+            if best_diff is None or diff < best_diff:
+                best_diff = diff
+                best_frame_idx = frame_idx
+                best_ros_time = ros_time
+            frame_idx += 1
+
+    if best_frame_idx is None:
+        raise RuntimeError(f"No frames found for topic {topic_name} in {rosbag_path}")
+
+    return {
+        "frame_idx": best_frame_idx,
+        "ros_time": best_ros_time,
+        "diff_sec": best_diff,
+    }
+
+def extract_images_from_ros(time_str=None,
                             topic_name="/cam_L/color/image_raw",
-                             rosbag_path="/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag",
-                             output_folder="rs_images"):
-    # ======== Inpsect rosbg ============
-    bag = rosbag.Bag(rosbag_path)
-    local_tz = pytz.timezone("America/Chicago")
+                            rosbag_path="/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag",
+                            output_folder="rs_images",
+                            timezone_name="America/Chicago"):
     os.makedirs(output_folder, exist_ok=True)
 
-    # Print summary info
-    # print("Topics and message types:")
-    # print(bag.get_type_and_topic_info())
-    # print(bag.get_type_and_topic_info()[1].keys())
+    if time_str is not None:
+        target_unix_time = qualisys_time_to_unix(time_str, timezone_name=timezone_name)
+        match = find_closest_ros_frame_start(
+            target_unix_time,
+            topic_name=topic_name,
+            rosbag_path=rosbag_path,
+        )
+        start_frame = match["frame_idx"]
+        print(f"Qualisys video Unix time: {target_unix_time}")
+        print(
+            f"Starting ROS extraction at frame {start_frame} "
+            f"(timestamp {match['ros_time']:.6f}, diff {match['diff_sec']:.6f}s)"
+        )
+    else:
+        match = {}
+        start_frame = 0
 
-    # Convert timestamp from Qualisys video to Unix time
-    # Step 1: Parse the string into a naive datetime object (no timezone yet)
-    dt = datetime.strptime(time_str, "%Y-%m-%d, %H:%M:%S.%f")
-    # (Optional) Step 2: Localize to your timezone, e.g., Austin TX (America/Chicago)
-    # If you know the time is in local time and want correct epoch conversion:
-    localized_dt = local_tz.localize(dt)
-    # Step 3: Convert to Unix timestamp (UTC-based)
-    qualisys_video_start_time = localized_dt.timestamp()
-    print(f"Qualisys video Unix time: {qualisys_video_start_time}")
-
-    # Iterate through all messages
-    count = 0
-    check_diff = True
-    for topic, msg, t in bag.read_messages():
-        # print(f"Topic: {topic}, Time: {t}")
-        # breakpoint()
-        if topic == topic_name:
-
-            diff = abs(qualisys_video_start_time - t.to_sec())
-            print("time diff: ", diff)
-            if check_diff and diff < 0.02:
-                breakpoint()
-                check_diff = False
-            
-            if not check_diff:
+    with rosbag.Bag(rosbag_path) as bag:
+        count = 0
+        frame_idx = 0
+        saved_timestamps = []
+        for topic, msg, ros_time in bag.read_messages(topics=[topic_name]):
+            if frame_idx >= start_frame:
                 save_frame(msg, count, output_folder)
+                saved_timestamps.append(ros_time.to_sec())
                 count += 1
-            
-            # # Convert ROS time to float seconds
-            # timestamp_secs = t.to_sec()
-            # print(timestamp_secs)
-            # # Convert to datetime object (UTC)
-            # dt = datetime.fromtimestamp(timestamp_secs, local_tz)
-            # # Format it as a string
-            # formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-            # print(f"Message time: {formatted_time}")
-            # breakpoint()
+            frame_idx += 1
 
-        #     print(f"Message: {msg}")
-        # break  # remove 'break' to see all messages
+    print(f"Saved {count} ROS frames to '{output_folder}'")
+    match["saved_timestamps"] = saved_timestamps
+    return match
 
-    bag.close()
-    # ==================================
+
+def generate_qualisys_timestamps(start_time_str,
+                                 num_frames,
+                                 fps=30.0,
+                                 timezone_name="America/Chicago"):
+    start_unix = qualisys_time_to_unix(start_time_str, timezone_name=timezone_name)
+    frame_period = 1.0 / fps
+    return [start_unix + (frame_idx * frame_period) for frame_idx in range(num_frames)]
+
+
+def _closest_index(sorted_values, target):
+    insert_idx = bisect_left(sorted_values, target)
+    if insert_idx == 0:
+        return 0
+    if insert_idx >= len(sorted_values):
+        return len(sorted_values) - 1
+
+    before_idx = insert_idx - 1
+    after_idx = insert_idx
+    before_diff = abs(sorted_values[before_idx] - target)
+    after_diff = abs(sorted_values[after_idx] - target)
+    if after_diff < before_diff:
+        return after_idx
+    return before_idx
+
+
+def build_paired_dataset(qualisys_source_folder,
+                         ros_source_folder,
+                         ros_timestamps,
+                         qualisys_start_time,
+                         left_output_folder,
+                         right_output_folder,
+                         qualisys_fps=30.0,
+                         timezone_name="America/Chicago"):
+    qualisys_source = Path(qualisys_source_folder)
+    ros_source = Path(ros_source_folder)
+    left_output = Path(left_output_folder)
+    right_output = Path(right_output_folder)
+
+    qualisys_files = sorted(qualisys_source.glob("*.jpg"))
+    ros_files = sorted(ros_source.glob("*.jpg"))
+    if not qualisys_files:
+        raise RuntimeError(f"No Qualisys frames found in {qualisys_source}")
+    if not ros_files:
+        raise RuntimeError(f"No ROS frames found in {ros_source}")
+
+    left_output.mkdir(parents=True, exist_ok=True)
+    right_output.mkdir(parents=True, exist_ok=True)
+    for folder in (left_output, right_output):
+        for old_file in folder.glob("*.jpg"):
+            old_file.unlink()
+
+    qualisys_timestamps = generate_qualisys_timestamps(
+        qualisys_start_time,
+        len(qualisys_files),
+        fps=qualisys_fps,
+        timezone_name=timezone_name,
+    )
+
+    paired_count = min(len(ros_files), len(ros_timestamps))
+    for ros_idx in range(paired_count):
+        ros_time = ros_timestamps[ros_idx]
+        qual_idx = _closest_index(qualisys_timestamps, ros_time)
+        target_name = f"{ros_idx:04d}.jpg"
+        shutil.copy2(qualisys_files[qual_idx], left_output / target_name)
+        shutil.copy2(ros_files[ros_idx], right_output / target_name)
+
+    print(f"Built paired dataset with {paired_count} image pairs")
 
 def clean_and_rename_images(folder_path, rs_offset_to_qualisys):
     # Get all JPG files sorted by name

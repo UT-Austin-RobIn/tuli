@@ -1,55 +1,70 @@
-import cv2
-import os
-import shutil
 from pathlib import Path
 
-from misc_utils import *
-
-# extract_iamges_from_ros2(topic_name="/cam_L/color/image_raw",
-#                          rosbag_path="/home/robotlearning2/infants/data/0/trial_004/trial_ros.bag", 
-#                          output_folder="rs_L_images")
-# extract_iamges_from_ros2(topic_name="/cam_M/color/image_raw",
-#                          rosbag_path="/home/robotlearning2/infants/data/0/trial_004/trial_ros.bag", 
-#                          output_folder="rs_M_images")
+from misc_utils import build_paired_dataset, extract_images_from_ros, extract_images_from_video
 
 
-# # 1. Extract all images from Qualisys video
-extract_images_from_video(resize_frame=False)
-
-# # 2. Extract images from RS camera starting from Qualisys start timestamp
-# # TODO: User needs to set this for now!
-# time_str = "2025-10-02, 11:24:01.606"
-# extract_images_from_ros(time_str=time_str, rosbag_path="/home/robotlearning2/infants/data/0/trial_003/trial_ros.bag")
-
-# # 3. Obtain the offset 
-# # rs frame where phone blinks = rs_blink ; qualisys frame where phone blinks = qualisys_blink
-# # if rs_blink < qualisys_blink: negative ; else positive
-# rs_offset_to_qualisys = int(input("Enter the time synchronization offset"))
-# # rs_offset_to_qualisys = -15
-
-# # 4. Rewrite all images of RS or Qualisys with this new offset
-# if rs_offset_to_qualisys < 0:
-#     # update Qualisys images
-#     clean_and_rename_images(folder_path="qualisys_camera_images", rs_offset_to_qualisys=abs(rs_offset_to_qualisys))
-# elif rs_offset_to_qualisys > 0:
-#     # update RS images
-#     clean_and_rename_images(folder_path="rs_images", rs_offset_to_qualisys=abs(rs_offset_to_qualisys))
+def prompt_with_default(label, default_value):
+    value = input(f"{label} [{default_value}]: ").strip()
+    return value or default_value
 
 
-# # 5. Obtain the start and end frames from Qualisys. Transfer (start, end) from qualisys_images and (start, end) from rs_images 
-# # to calibration folders
-# # start_index = int(input("Enter start index"))
-# # end_index = int(input("Enter end index"))
-# start_index = 150     # inclusive, e.g., 1 for '0001.jpg'
-# end_index = 1450      # inclusive, e.g., 50 for '0050.jpg'
-# filename_digits = 4 # e.g., 0001 has 4 digits
+def main():
+    video_path = Path(prompt_with_default("Qualisys video path", "qualisys_video.avi")).expanduser()
+    rosbag_path = Path(
+        prompt_with_default(
+            "ROS bag path",
+            "/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag",
+        )
+    ).expanduser()
 
-# # source_folder = Path("/home/robotlearning2/infants/rs_images")      # /home/robotlearning2/infants
-# source_folder = Path("/home/robotlearning2/infants/rs_L_images")      # /home/robotlearning2/infants
-# destination_folder = Path("/home/robotlearning2/stereo-calib/dataset/left")  # e.g., Path("./output_images")
-# transfer_images(source_folder, destination_folder, start_index, end_index)
+    qualisys_output = Path(prompt_with_default("Qualisys output folder", "qualisys_camera_images")).expanduser()
+    ros_output = Path(prompt_with_default("ROS output folder", "rs_images")).expanduser()
+    topic_name = prompt_with_default("ROS topic", "/cam_L/color/image_raw")
+    resize_qualisys = prompt_with_default("Crop Qualisys image to match the size of Realsense image?", "y").lower() in {"y", "yes"}
 
-# # source_folder = Path("/home/robotlearning2/infants/qualisys_camera_images")      # /home/robotlearning2/infants
-# source_folder = Path("/home/robotlearning2/infants/rs_M_images")      # /home/robotlearning2/infants
-# destination_folder = Path("/home/robotlearning2/stereo-calib/dataset/right")  # e.g., Path("./output_images")
-# transfer_images(source_folder, destination_folder, start_index, end_index)
+    extract_images_from_video(
+        video_path=str(video_path),
+        output_folder=str(qualisys_output),
+        resize_frame=resize_qualisys,
+    )
+
+    match_frames = prompt_with_default("Match frames? (y/n)", "n").lower() in {"y", "yes"}
+    if match_frames:
+        qualisys_start_time = input("Qualisys start time [YYYY-MM-DD, HH:MM:SS.mmm]: ").strip()
+        if not qualisys_start_time:
+            raise ValueError("Qualisys start time is required for frame matching")
+
+        match = extract_images_from_ros(
+            time_str=qualisys_start_time,
+            topic_name=topic_name,
+            rosbag_path=str(rosbag_path),
+            output_folder=str(ros_output),
+        )
+        left_output = Path(prompt_with_default("Paired left output folder", "/home/robotlearning2/stereo-calib/dataset/left")).expanduser()
+        right_output = Path(prompt_with_default("Paired right output folder", "/home/robotlearning2/stereo-calib/dataset/right")).expanduser()
+        build_paired_dataset(
+            qualisys_source_folder=str(qualisys_output),
+            ros_source_folder=str(ros_output),
+            ros_timestamps=match["saved_timestamps"],
+            qualisys_start_time=qualisys_start_time,
+            left_output_folder=str(left_output),
+            right_output_folder=str(right_output),
+            qualisys_fps=30.0,
+        )
+        print(
+            "Alignment summary: "
+            f"closest ROS frame {match['frame_idx']}, "
+            f"timestamp diff {match['diff_sec']:.6f}s"
+        )
+    else:
+        extract_images_from_ros(
+            time_str=None,
+            topic_name=topic_name,
+            rosbag_path=str(rosbag_path),
+            output_folder=str(ros_output),
+        )
+        print(f"[INFO] Images extracted to {qualisys_output} and {ros_output}. Skipping frame matching.")
+
+
+if __name__ == "__main__":
+    main()

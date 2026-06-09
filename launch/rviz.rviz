@@ -108,7 +108,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: map
+    Fixed Frame: cam_L_color_optical_frame
     Frame Rate: 30
   Name: root
   Tools:

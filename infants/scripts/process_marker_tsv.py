@@ -8,8 +8,12 @@ from std_msgs.msg import Int32, String
 import pytz
 from datetime import datetime
 
-file_path = "001.tsv"
-output_bag_path = "marker.bag"
+file_path = input("Path to Qualisys TSV file: ").strip()
+
+output_dir = os.path.join(os.path.expanduser("~"), "infants", "data")
+os.makedirs(output_dir, exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_bag_path = os.path.join(output_dir, f"tsv_{timestamp}.bag")
 
 all_rows = []
 with open(file_path, newline='') as f:
