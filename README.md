@@ -17,8 +17,8 @@ password: `robotlearning2`
          Run: `sudo mount -t nfs 192.168.253.1:/volume1/tuli ~/synology-tuli` (password: robotlearning2 )
 4. Perform calibration by following [the calibration guide](docs/calibration.md)
 5. `cd ~/infants/`
-6. Launch the cameras: `./start_all.sh`
-7. Verify that they start with `./check_cams.sh`
+6. Launch the cameras: `./infants/scripts/start_all.sh`
+7. Verify that they start with `./infants/scripts/check_cams.sh`
 You should see all 6 camera topics (color image raw and aligned depth image raw for cameras L, M, R). 
 
 ## Running Trials
