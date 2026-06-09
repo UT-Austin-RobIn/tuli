@@ -24,7 +24,7 @@ You should see all 6 camera topics (color image raw and aligned depth image raw 
 ## Running Trials
 
 1. Activate the virtualenv, `source ~/envs/infants/bin/activate` 
-2. Run the experiment script: `python experiment/experiment_driver.py`.
+2. Run the experiment script: `python infants/experiment/experiment_driver.py`
 3. It will prompt for `subject ID`, `task name`, and `condition ID`. 
 Make sure the subject ID 3 digits. Example (1) write 001 for (2) write 002
 Subject ID should be an integer. Task should be in `[bang, slide, hammer]`.  
