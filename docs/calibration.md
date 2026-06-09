@@ -34,6 +34,7 @@ Navigate to the project directory:
 
 ```bash
 cd /home/robotlearning2/infants
+source ~/envs/infants/bin/activate
 ```
 
 ## Naming Convention
@@ -49,7 +50,7 @@ Use the following naming convention for this calibration data collection session
 ## 3.1 Start Camera Stream
 
 ```bash
-./start_camera_for_calibration --left
+./infants/scripts/start_camera_for_calibration --left
 ```
 
 ## 3.2 Verify Cameras
@@ -57,10 +58,16 @@ Use the following naming convention for this calibration data collection session
 In a new terminal:
 
 ```bash
-./check_cams.sh
+./infants/scripts/check_cams.sh
 ```
 
-This should output `TODO`.
+This should output: 
+```
+                 topic                     rate   min_delta   max_delta   std_dev    window
+===========================================================================================
+/cam_L/color/image_raw                    29.97   0.01206     0.04849     0.002946   141   
+/cam_L/aligned_depth_to_color/image_raw   29.95   0.01237     0.04816     0.002854   141   
+```
 
 If not, contact Arpit or Daniel.
 
@@ -69,7 +76,7 @@ If not, contact Arpit or Daniel.
 In a new terminal on linux:
 
 ```bash
-record_for_calibration.py --left_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --left_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
 ```
 
 Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_left_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
@@ -107,7 +114,7 @@ Press `Ctrl+C` in the terminal that was running `./start_camera_for_calibration 
 ## 4.1 Start Camera Stream
 
 ```bash
-./start_camera_for_calibration --right
+./infants/scripts/start_camera_for_calibration --right
 ```
 
 ## 4.2 Verify Cameras
@@ -115,7 +122,7 @@ Press `Ctrl+C` in the terminal that was running `./start_camera_for_calibration 
 In a new terminal:
 
 ```bash
-./check_cams.sh
+./infants/scripts/check_cams.sh
 ```
 
 This should output `TODO`.
@@ -127,7 +134,7 @@ If not, contact Arpit or Daniel.
 In a new terminal:
 
 ```bash
-record_for_calibration.py --right_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --right_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
 ```
 
 Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_right_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
@@ -167,7 +174,7 @@ No Qualisys recording is required for this step.
 ## 5.1 Start Camera Streams
 
 ```bash
-./start_camera_for_calibration --left --mid
+./infants/scripts/start_camera_for_calibration --left --mid
 ```
 
 ## 5.2 Verify Cameras
@@ -175,7 +182,7 @@ No Qualisys recording is required for this step.
 In a new terminal:
 
 ```bash
-./check_cams.sh
+./infants/scripts/check_cams.sh
 ```
 
 This should output `TODO`.
@@ -187,7 +194,7 @@ If not, contact Arpit or Daniel.
 In a new terminal:
 
 ```bash
-record_for_calibration.py --right_to_left --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --right_to_left --folder_name {yy_mm_dd_infant_XXX}
 ```
 
 Perform the calibration data collection procedure.
