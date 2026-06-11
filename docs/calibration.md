@@ -206,29 +206,25 @@ Perform the calibration data collection procedure.
 Open Windows PowerShell and run:
 
 ```bash
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/yy_mm_dd_infant_{XXX}/left_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/left_to_qualisys/
 
-scp C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd}_left_to_qualisys.tsv \
-robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/left_to_qualisys/
 
-scp C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd}_right_to_qualisys_Miqus_10_31041.avi \
-robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/right_to_qualisys/
 
-scp C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd}_right_to_qualisys.tsv \
-robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/right_to_qualisys/
 
-scp {path_to_qualisys_calibration_file} \
-robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp 'C:\Users\UT Austin\Downloads\{yy_mm_dd_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
 ```
 
 So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_infant_00X}` folder:
 1. `left_to_qualisys/ros.bag`
 2. `right_to_qualisys/ros.bag`
 3. `right_to_left/ros.bag`
-4. `{yy_mm_dd}_left_to_qualisys_Miqus_10_31039.avi`
-5. `{yy_mm_dd}_right_to_qualisys_Miqus_10_31041.avi`
-6. `{yy_mm_dd}_left_to_qualisys.tsv`
-7. `{yy_mm_dd}_right_to_qualisys.tsv`
+4. `left_to_qualisys/{yy_mm_dd}_left_to_qualisys_Miqus_10_31039.avi`
+5. `right_to_qualisys/{yy_mm_dd}_right_to_qualisys_Miqus_10_31041.avi`
+6. `left_to_qualisys/{yy_mm_dd}_left_to_qualisys.tsv`
+7. `right_to_qualisys/{yy_mm_dd}_right_to_qualisys.tsv`
 8. `qualisys_calibration_file.qca`
 
 
