@@ -256,4 +256,4 @@ def save_calibration_intrinsics(calibration_path, output_path, num_frames=5000):
 
 
 if __name__ == "__main__":
-    read_qca("/home/robotlearning2/infants/calibration_output.txt", binning_factor=1)
+    read_qca("/home/robotlearning2/0331_calibration.txt", binning_factor=1)

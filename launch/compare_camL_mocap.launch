@@ -1,0 +1,67 @@
+<launch>
+  <!--
+    Compare cam_L pointcloud against Qualisys mocap markers loaded from a TSV.
+    Only cam_L cloud + mocap markers + qualisys_ref TF are visualized.
+  -->
+
+  <arg name="repo_root"      default="/home/robotlearning2/stereo-calib"/>
+  <arg name="cam_bag"        default="/home/robotlearning2/synology-tuli/2026-05-01_11-54-25/trial_001/trial_ros.bag"/>
+  <arg name="calib_dir"      default="$(arg repo_root)/dataset/calib_data_all"/>
+  <arg name="qtm_xml"        default="$(arg calib_dir)/qualisys_calibration_51.txt"/>
+  <arg name="calib_L_path"   default="$(arg calib_dir)/qualisys_cam_L_51/run_2026-05-09_15-57-20/calibration_results.json"/>
+  <arg name="calib_R_path"   default="$(arg calib_dir)/qualisys_cam_R_51/run_2026-05-09_16-15-04/calibration_results.json"/>
+  <arg name="calib_LM_path"  default="$(arg calib_dir)/cam_L_cam_M_51/run_2026-05-09_16-15-48/calibration_results.json"/>
+  <arg name="world_frame"    default="qualisys_ref"/>
+  <arg name="mocap_anchor_L" default="31039"/>
+  <arg name="mocap_anchor_R" default="31041"/>
+  <arg name="mocap_tsv"      default="/home/robotlearning2/039.tsv"/>
+  <arg name="rviz"           default="true"/>
+  <arg name="rate"           default="1.0"/>
+
+  <param name="use_sim_time" value="true"/>
+
+  <node pkg="rosbag" type="play" name="rosbag_play"
+        args="--clock --rate=$(arg rate) $(arg cam_bag)"
+        output="screen" required="true"/>
+
+  <node name="calib_tf_publisher"
+        pkg="stereo_calib" type="calib_tf_publisher.py"
+        output="screen">
+    <param name="calib_dir"      value="$(arg calib_dir)"/>
+    <param name="qtm_xml"        value="$(arg qtm_xml)"/>
+    <param name="calib_L_path"   value="$(arg calib_L_path)"/>
+    <param name="calib_R_path"   value="$(arg calib_R_path)"/>
+    <param name="calib_LM_path"  value="$(arg calib_LM_path)"/>
+    <param name="world_frame"    value="$(arg world_frame)"/>
+    <param name="mocap_anchor_L" value="$(arg mocap_anchor_L)"/>
+    <param name="mocap_anchor_R" value="$(arg mocap_anchor_R)"/>
+  </node>
+
+  <!-- Only cam_L pointcloud. -->
+  <group ns="cam_L">
+    <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager"/>
+    <node pkg="nodelet" type="nodelet" name="cloud_xyzrgb"
+          args="load depth_image_proc/point_cloud_xyzrgb nodelet_manager">
+      <remap from="rgb/image_rect_color"        to="color/image_raw"/>
+      <remap from="rgb/camera_info"             to="color/camera_info"/>
+      <remap from="depth_registered/image_rect" to="aligned_depth_to_color/image_raw"/>
+      <remap from="depth_registered/points"     to="points"/>
+      <param name="queue_size" value="20"/>
+    </node>
+  </group>
+
+  <!-- Mocap markers from TSV, time-synced to /clock. -->
+  <node name="mocap_tsv_publisher"
+        pkg="stereo_calib" type="mocap_tsv_publisher.py"
+        output="screen">
+    <param name="tsv_path"      value="$(arg mocap_tsv)"/>
+    <param name="frame_id"      value="qualisys_ref"/>
+    <param name="topic"         value="/mocap_markers"/>
+    <param name="sphere_radius" value="0.02"/>
+    <param name="rate_hz"       value="50.0"/>
+  </node>
+
+  <node if="$(arg rviz)" pkg="rviz" type="rviz" name="rviz"
+        args="-d $(arg repo_root)/config/compare_camL_mocap.rviz"
+        output="screen"/>
+</launch>

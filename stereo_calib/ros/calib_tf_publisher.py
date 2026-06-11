@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 #!/usr/bin/env python
+=======
+#!/usr/bin/env python3
+>>>>>>> Stashed changes
 """ROS1 node: publish static TFs for the qualisys + 3 RealSense calibration tree.
 
 Frames published:
@@ -22,6 +26,12 @@ Required ROS params (private):
     ~world_frame    : str — one of {qualisys_ref, cam_L_optical, cam_R_optical, cam_M_optical}
     ~qtm_xml        : str — path to QTM calibration XML (default: calib_data/mocap_calib_0415.txt)
     ~calib_dir      : str — directory holding the 3 calibration JSONs
+<<<<<<< Updated upstream
+=======
+    ~calib_L_path   : str — explicit path to qualisys -> cam_L calibration JSON
+    ~calib_R_path   : str — explicit path to qualisys -> cam_R calibration JSON
+    ~calib_LM_path  : str — explicit path to cam_L -> cam_M calibration JSON
+>>>>>>> Stashed changes
 """
 from __future__ import annotations
 
@@ -103,9 +113,15 @@ def main():
             )
             return
 
+<<<<<<< Updated upstream
     calib_L_path = calib_dir / "calib_qualisys_cam_L.json"
     calib_R_path = calib_dir / "calib_qualisys_cam_R.json"
     calib_LM_path = calib_dir / "callib_calib_L_cam_M.json"
+=======
+    calib_L_path = Path(rospy.get_param("~calib_L_path", str(calib_dir / "calib_qualisys_cam_L.json")))
+    calib_R_path = Path(rospy.get_param("~calib_R_path", str(calib_dir / "calib_qualisys_cam_R.json")))
+    calib_LM_path = Path(rospy.get_param("~calib_LM_path", str(calib_dir / "callib_calib_L_cam_M.json")))
+>>>>>>> Stashed changes
     for p in (calib_L_path, calib_R_path, calib_LM_path):
         if not p.exists():
             rospy.logfatal(f"Calibration file missing: {p}")

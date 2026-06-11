@@ -69,11 +69,11 @@ print("K in pixel units:\n", K)
 dist_coeffs = np.array([-0.046081, 0.134643, 0.000513, 0.000115, 0.0])
 
 # Load your mocap RGB image
-img = cv2.imread("/home/robotlearning2/infants/qualisys_camera_images/0003.jpg")
+img = cv2.imread("/home/robotlearning2/stereo-calib/test_calib_2_qualisys/0000.jpg")
 
 # Obtain the position of mocap marker wrt mocap reference frame
 # point_wrt_mcR = np.array([-112.0, 220.0, 12.0, 1000.0]) / 1000.0   # X, Y, Z in meters wrt camera
-point_wrt_mcR = np.array([479.688, 225.411, 29.954, 1000.0]) / 1000.0   # X, Y, Z in meters wrt camera
+point_wrt_mcR = np.array([210.845, 159.02, 6.159, 1000.0]) / 1000.0   # X, Y, Z in meters wrt camera
 
 # # Pose of mocap RGB camera wrt mocap reference frame
 # T_mc_wrt_mcR = np.array([
@@ -82,10 +82,11 @@ point_wrt_mcR = np.array([479.688, 225.411, 29.954, 1000.0]) / 1000.0   # X, Y, 
 #         [-0.304008, 0.830855, 0.466110, 562.679993 / 1000],
 #         [0.0, 0.0, 0.0, 1.0]
 #     ]) 
+
 T_mc_wrt_mcR = np.array([
-        [-0.952129, 0.032076, -0.304008, -207.692825 / 1000],
-        [-0.281458, -0.480063, 0.830855, 1005.463013 / 1000],
-        [-0.119293, 0.876647, 0.466110, 562.679993 / 1000],
+        [-0.964936, -0.170986, 0.199153, 613.657959 / 1000],
+        [0.251068, -0.379914, 0.890298, 1280.002319 / 1000],
+        [-0.076567, 0.909082, 0.409521, 783.635193 / 1000],
         [0.0, 0.0, 0.0, 1.0]
     ]) 
 
@@ -121,4 +122,4 @@ img_overlay = overlay_point_on_image(img, pixel[0], color=(0, 0, 255))
 # Show result
 cv2.imshow("Reprojected Point", img_overlay)
 cv2.waitKey(0)
-cv2.destroyAllWindows()
+# cv2.destroyAllWindows()

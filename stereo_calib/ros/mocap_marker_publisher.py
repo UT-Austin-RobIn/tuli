@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 #!/usr/bin/env python
+=======
+#!/usr/bin/env python3
+>>>>>>> Stashed changes
 """ROS1 node: subscribe to a geometry_msgs/PointStamped mocap stream and
 republish each sample as a single visualization_msgs/Marker (red sphere) so
 RViz can display it on top of the calibrated point clouds.

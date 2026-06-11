@@ -34,7 +34,7 @@ def show_pointcloud_with_point(pcd, point_xyz, point_color=[1, 0, 0], sphere_rad
 def show_colored_pointcloud(color_img, depth_img, cam_info: CameraInfo, depth_scale=1000.0):
     """
     Display a colored point cloud using Open3D.
-    
+
     Args:
         color_img (np.ndarray): Color image (BGR from OpenCV).
         depth_img (np.ndarray): Depth image (uint16 or float32).
@@ -107,7 +107,7 @@ def show_colored_pointcloud(color_img, depth_img, cam_info: CameraInfo, depth_sc
     #             print(f"Picked point index: {idx}, coordinates: {pt}")
 
     # pick_points_and_print(pcd)
-    
+
     # Add camera coordinate frame at origin
     # geometries = [pcd]
     # show_camera_frame = True
@@ -124,15 +124,15 @@ def show_colored_pointcloud(color_img, depth_img, cam_info: CameraInfo, depth_sc
 def get_color_image_and_info():
     rospy.init_node('simple_image_listener', anonymous=True)
     bridge = CvBridge()
-    
-    image_msg = rospy.wait_for_message("/cam_L/color/image_raw", Image)
-    depth_msg = rospy.wait_for_message('/cam_L/aligned_depth_to_color/image_raw', Image)
-    info_msg = rospy.wait_for_message("/cam_L/color/camera_info", CameraInfo)
-    
+
+    image_msg = rospy.wait_for_message("/cam_R/color/image_raw", Image)
+    depth_msg = rospy.wait_for_message('/cam_R/aligned_depth_to_color/image_raw', Image)
+    info_msg = rospy.wait_for_message("/cam_R/color/camera_info", CameraInfo)
+
     cv_image = bridge.imgmsg_to_cv2(image_msg, desired_encoding='bgr8')
     cv_depth = bridge.imgmsg_to_cv2(depth_msg, desired_encoding='passthrough')
     # cv_depth = None
-    
+
     return cv_image, cv_depth, info_msg
 
 # Example usage:
@@ -145,15 +145,15 @@ if __name__ == '__main__':
     # plt.show()
 
     T_mc_wrt_mcR = np.array([
-        [-0.952129, 0.032076, -0.304008, -207.692825 / 1000],
-        [-0.281458, -0.480063, 0.830855, 1005.463013 / 1000],
-        [-0.119293, 0.876647, 0.466110, 562.679993 / 1000],
+        [0.219072, -0.412099, 0.884410, 1462.360718 / 1000],
+        [0.975663,  0.101270, -0.194488, 181.975784 / 1000],
+        [-0.009416, 0.905493, 0.424256, 583.611816 / 1000],
         [0.0, 0.0, 0.0, 1.0]
-    ]) 
+    ])
 
-    # point_wrt_mcR = np.array([-174.0, 419.0, 25.0, 1000.0]) / 1000.0    
+    # point_wrt_mcR = np.array([-174.0, 419.0, 25.0, 1000.0]) / 1000.0
     # 78.71	184.111	14.02
-    point_wrt_mcR = np.array([19.0, 220.25, 77.40, 1000.0]) / 1000.0   # X, Y, Z in meters wrt camera
+    point_wrt_mcR = np.array([467.213, 147.279, -2.305, 1000.0]) / 1000.0   # X, Y, Z in meters wrt camera
 
     point_wrt_mc = np.linalg.inv(T_mc_wrt_mcR) @ point_wrt_mcR
     print("point_wrt_mc: ", point_wrt_mc)
@@ -168,32 +168,58 @@ if __name__ == '__main__':
     point_wrt_mc = np.append(point_wrt_mc, 1.0)
 
     R =  np.array([
-        [ 0.7780564627749914, 0.17704388149961886, -0.6027301259748158],
-        [ -0.2978532687426021, 0.9487285426025455, -0.10581863139635345],
-        [ 0.5530927327613478, 0.26185800823117666, 0.7908974728065485]])
+        [ 0.8840417964019007, 0.224572581233019, -0.40992347819177094],
+        [ -0.15782415559538332, 0.9689267845188937, 0.19045320200112564],
+        [ 0.43995640480063986, -0.1036727640232304, 0.892014753170977]])
     T = np.array([
         [
-            0.8142749429152566
+            0.900046138703061
         ],
         [
-            0.0373086855203048
+            -0.28528900870608004
         ],
         [
-            0.20257702653342857
+            0.3111966011976698
         ]])
 
     trans_matrix = np.eye(4)
     trans_matrix[:3, :3] = R
     trans_matrix[:3, 3] = T.squeeze()
-    temp1 = trans_matrix @ point_wrt_mc
-    temp2 = np.linalg.inv(trans_matrix) @ point_wrt_mc
 
-    print("temp1: ", temp1)
-    print("temp2: ", temp2)
+    point_wrt_rs = trans_matrix @ point_wrt_mc
+
+    print("point_wrt_rs: ", point_wrt_rs)
     breakpoint()
 
     pcd = show_colored_pointcloud(img, depth, cam_info)
-    show_pointcloud_with_point(pcd, temp2[:3])
+    show_pointcloud_with_point(pcd, point_wrt_rs[:3])
+
+    # Save PCD with marker to disk
+    import datetime
+    from pathlib import Path
+    output_dir = Path(__file__).resolve().parent.parent / "results" / "pointclouds"
+    output_dir.mkdir(exist_ok=True, parents=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Save the point cloud
+    pcd_path = output_dir / f"pointcloud_{timestamp}.ply"
+    o3d.io.write_point_cloud(str(pcd_path), pcd)
+    print(f"Point cloud saved to {pcd_path}")
+
+    # Save the marker sphere as a separate file
+    sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.03)
+    sphere.translate(temp2[:3])
+    sphere.paint_uniform_color([1, 0, 0])
+    marker_pcd = sphere.sample_points_uniformly(number_of_points=1000)
+    marker_path = output_dir / f"marker_{timestamp}.ply"
+    o3d.io.write_point_cloud(str(marker_path), marker_pcd)
+    print(f"Marker saved to {marker_path}")
+
+    # Save combined (pcd + marker points)
+    combined = pcd + marker_pcd
+    combined_path = output_dir / f"combined_{timestamp}.ply"
+    o3d.io.write_point_cloud(str(combined_path), combined)
+    print(f"Combined point cloud with marker saved to {combined_path}")
     # ====================================================
 
     # # From calibration
@@ -243,5 +269,3 @@ if __name__ == '__main__':
 
     # # breakpoint()
     # show_pointcloud_with_point(pcd, point_wrt_rs[:3])
-
-    

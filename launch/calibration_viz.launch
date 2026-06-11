@@ -2,23 +2,33 @@
   <!--
     Calibration sanity-check viewer.
 
-    Run inside `conda activate ros1`, from anywhere:
-      roslaunch $(pwd)/launch/calibration_viz.launch
-        cam_bag:=$(pwd)/calib_data/cam_only.bag
-        mocap_bag:=$(pwd)/calib_data/mocap_marker_fixed.bag
-        mocap_anchor_L:=31039
+    Run inside a ROS1 environment, from anywhere:
+      roslaunch /abs/path/to/calibration_viz.launch \
+        repo_root:=/abs/path/to/stereo-calib \
+        cam_bag:=/abs/path/to/trial_ros.bag \
+        calib_dir:=/abs/path/to/calibration_results_parent \
+        qtm_xml:=/abs/path/to/qualisys_calibration.txt \
+        world_frame:=qualisys_ref \
+        mocap_anchor_L:=31039 \
         mocap_anchor_R:=31041
-        world_frame:=qualisys_ref
 
-    Defaults play cam_only.bag + the TSV-derived mocap_marker_fixed.bag together,
-    because the /marker_1 topic baked into the combined_*.bag files is broken
-    (sample_index, elapsed_seconds, 0 instead of XYZ). Use scripts/tsv_to_bag.py
-    to (re)generate mocap_marker_fixed.bag from a Qualisys TSV.
+    This launch file can run in two modes:
+      1. Point-cloud-only (default): plays one camera bag and renders the 3
+         point clouds with the calibration TF tree.
+      2. Point-cloud + mocap marker: additionally plays a mocap bag and
+         republishes /marker_1 into RViz.
   -->
 
   <arg name="repo_root"      default="$(env HOME)/Desktop/stereo-calib"/>
   <arg name="cam_bag"        default="$(arg repo_root)/calib_data/cam_only.bag"/>
-  <arg name="mocap_bag"      default="$(arg repo_root)/calib_data/mocap_marker_fixed.bag"/>
+  <arg name="calib_dir"      default="$(arg repo_root)/calib_data"/>
+  <arg name="qtm_xml"        default="$(arg calib_dir)/mocap_calib_0415.txt"/>
+  <arg name="calib_L_path"   default="$(arg calib_dir)/calib_qualisys_cam_L.json"/>
+  <arg name="calib_R_path"   default="$(arg calib_dir)/calib_qualisys_cam_R.json"/>
+  <arg name="calib_LM_path"  default="$(arg calib_dir)/callib_calib_L_cam_M.json"/>
+  <arg name="mocap_bag"      default=""/>
+  <arg name="play_mocap_bag" default="false"/>
+  <arg name="show_mocap_marker" default="false"/>
   <arg name="world_frame"    default="qualisys_ref"/>
   <arg name="mocap_anchor_L" default="31039"/>
   <arg name="mocap_anchor_R" default="31041"/>
@@ -27,19 +37,25 @@
 
   <param name="use_sim_time" value="true"/>
 
-  <!-- Replay both bags merged on a single /clock so cam frames and mocap samples
-       are interleaved by header.stamp. -->
+  <!-- Replay the camera bag on /clock. -->
   <node pkg="rosbag" type="play" name="rosbag_play"
-        args="--clock --rate=$(arg rate) $(arg cam_bag) $(arg mocap_bag)"
+        args="--clock --rate=$(arg rate) $(arg cam_bag)"
         output="screen" required="true"/>
 
-  <!-- Calibration TF tree: world to qualisys_ref to {cam_L, cam_R}; cam_L to cam_M.
-       Requires this repo to be on ROS_PACKAGE_PATH so pkg="stereo_calib" resolves;
-       see package.xml for setup. The script self-injects the repo root into sys.path
-       so `import stereo_calib.*` works regardless of PYTHONPATH. -->
+  <!-- Optionally replay a separate mocap bag on the same /clock timeline. -->
+  <node if="$(arg play_mocap_bag)" pkg="rosbag" type="play" name="rosbag_play_mocap"
+        args="--clock --rate=$(arg rate) $(arg mocap_bag)"
+        output="screen"/>
+
+  <!-- Calibration TF tree: world to qualisys_ref to {cam_L, cam_R}; cam_L to cam_M. -->
   <node name="calib_tf_publisher"
         pkg="stereo_calib" type="calib_tf_publisher.py"
         output="screen">
+    <param name="calib_dir"       value="$(arg calib_dir)"/>
+    <param name="qtm_xml"         value="$(arg qtm_xml)"/>
+    <param name="calib_L_path"    value="$(arg calib_L_path)"/>
+    <param name="calib_R_path"    value="$(arg calib_R_path)"/>
+    <param name="calib_LM_path"   value="$(arg calib_LM_path)"/>
     <param name="world_frame"    value="$(arg world_frame)"/>
     <param name="mocap_anchor_L" value="$(arg mocap_anchor_L)"/>
     <param name="mocap_anchor_R" value="$(arg mocap_anchor_R)"/>
@@ -87,9 +103,8 @@
     </node>
   </group>
 
-  <!-- Republish /marker_1 (PointStamped) as a red sphere visualization_msgs/Marker
-       in qualisys_ref. RViz picks it up via the Marker display on /mocap_markers. -->
-  <node name="mocap_marker_publisher"
+  <!-- Optional mocap marker overlay for a separately played marker bag. -->
+  <node if="$(arg show_mocap_marker)" name="mocap_marker_publisher"
         pkg="stereo_calib" type="mocap_marker_publisher.py"
         output="screen">
     <param name="input_topic"   value="/marker_1"/>

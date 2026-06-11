@@ -42,8 +42,8 @@ for filename in files:
     # img_l = cv2.imread("/home/robotlearning2/stereo-calib/dataset/left/img_0000.jpg", cv2.IMREAD_COLOR)
     gray_l = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Try with DICT_4X4_50 first
     aruco_dict = cv2.aruco.getPredefinedDictionary(C.ARUCO_DICT)
+    aruco_detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
 
     # Define the board — must match the actual printed one
     board = CharucoBoard(charuco_data=CharucoBoardData(aruco_dict=C.ARUCO_DICT,
@@ -53,7 +53,7 @@ for filename in files:
                                                                 marker_length=C.MARKER_LENGTH))
 
     # Detect markers
-    corners_l, ids_l, _ = cv2.aruco.detectMarkers(gray_l, aruco_dict)
+    corners_l, ids_l, _ = aruco_detector.detectMarkers(gray_l)
     print("filename, Number of detected corners: ", filename, len(corners_l))
     # print("ids_l: ", ids_l)
     # print("corners_l: ", corners_l)
@@ -89,4 +89,3 @@ for filename in files:
     # cv2.imshow("Detected ArUco markers", vis_img)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-

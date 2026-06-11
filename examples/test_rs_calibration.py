@@ -1,3 +1,7 @@
+import argparse
+import json
+from pathlib import Path
+
 import rospy
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
@@ -8,6 +12,14 @@ import numpy as np
 np.set_printoptions(suppress=True, precision=4)
 import open3d as o3d
 from sensor_msgs.msg import CameraInfo
+
+
+def load_RT_from_calib(json_path: Path):
+    with open(json_path) as f:
+        d = json.load(f)
+    R = np.array(d["rot"], dtype=np.float64)
+    T = np.array(d["trans"], dtype=np.float64).reshape(3)
+    return R, T
 
 def show_pointcloud_with_point(pcd, point_xyz, point_color=[1, 0, 0], sphere_radius=0.05):
     """
@@ -137,70 +149,26 @@ def get_color_image_and_info(cam_name):
 
 # Example usage:
 if __name__ == '__main__':
-    img_L, depth_L, cam_info_L = get_color_image_and_info("cam_L")
-    img_M, depth_M, cam_info_M = get_color_image_and_info("cam_M")
+    ap = argparse.ArgumentParser(
+        description="Overlay cam_L and cam_M point clouds using calibration R,T")
+    ap.add_argument("--calib", required=True,
+                    help="Path to calibration_results.json")
+    ap.add_argument("--left-cam", default="cam_L",
+                    help="ROS namespace of LEFT camera (matches dataset/left)")
+    ap.add_argument("--right-cam", default="cam_M",
+                    help="ROS namespace of RIGHT camera (matches dataset/right)")
+    args = ap.parse_args()
+
+    R, T_vec = load_RT_from_calib(Path(args.calib).resolve())
+    print("Loaded R=\n", R)
+    print("Loaded T=", T_vec, " |T|=", np.linalg.norm(T_vec))
+
+    img_L, depth_L, cam_info_L = get_color_image_and_info(args.left_cam)
+    img_M, depth_M, cam_info_M = get_color_image_and_info(args.right_cam)
     print("Camera L K matrix:", cam_info_L.K)
     print("Camera M K matrix:", cam_info_M.K)
-    
 
-    # R = np.array([
-    #     [
-    #         0.5112488327460185,
-    #         0.14645775453176482,
-    #         -0.8468617107611768
-    #     ],
-    #     [
-    #         -0.17605127644886667,
-    #         0.9823240823650885,
-    #         0.06360302875108664
-    #     ],
-    #     [
-    #         0.8412078096859054,
-    #         0.11657411094707157,
-    #         0.5279961151186072
-    #     ]
-    # ])
-
-    # T =  np.array([
-    #     [
-    #         0.8852560627705376
-    #     ],
-    #     [
-    #         -0.08736871615668282
-    #     ],
-    #     [
-    #         0.08579026326347071
-    #     ]
-    # ])
-
-    R = np.array([
-        [
-            0.4617615120266097,
-            0.1636960951356345,
-            -0.8717682573070922
-        ],
-        [
-            -0.168284758616144,
-            0.9811406803178834,
-            0.09509576984738795
-        ],
-        [
-            0.8708941072417504,
-            0.10279374427807621,
-            0.4806005619107079
-        ]
-    ])
-    T = np.array([
-        [
-            0.8847490265848044
-        ],
-        [
-            -0.1131774738506267
-        ],
-        [
-            0.11741134311767307
-        ]
-    ])
+    T = T_vec.reshape(3, 1)
 
     trans_matrix = np.eye(4)
     trans_matrix[:3, :3] = R
@@ -223,11 +191,78 @@ if __name__ == '__main__':
     pcd_M_wrt_L.colors = pcd_M.colors
     # pcd_M_wrt_L = pcd_M.transform(trans_matrix)
 
-    print(np.min(depth_L), np.max(depth_L))
-    print(np.min(depth_M), np.max(depth_M))
-    print(len(pcd_L.points), len(pcd_M.points))
+    print("depth_L min/max:", np.min(depth_L), np.max(depth_L))
+    print("depth_M min/max:", np.min(depth_M), np.max(depth_M))
+    print("n_points L / M:", len(pcd_L.points), len(pcd_M.points))
 
-    o3d.visualization.draw_geometries([pcd_L, pcd_M_wrt_L])
+    # Bounding boxes so you can tell if clouds exist and roughly where
+    bbL = pcd_L.get_axis_aligned_bounding_box()
+    bbM = pcd_M_wrt_L.get_axis_aligned_bounding_box()
+    print(f"pcd_L bounds: min={bbL.min_bound}  max={bbL.max_bound}")
+    print(f"pcd_M_wrt_L bounds: min={bbM.min_bound}  max={bbM.max_bound}")
+
+    # Tint each cloud so they're distinguishable when overlapping.
+    # cam_L cloud: keep RGB but bias red channel up so it reads warm
+    # cam_M cloud (transformed): paint uniformly cyan
+    pcd_L_vis = o3d.geometry.PointCloud(pcd_L)
+    L_colors = np.asarray(pcd_L_vis.colors)
+    if len(L_colors) > 0:
+        L_colors[:, 0] = np.clip(L_colors[:, 0] * 0.6 + 0.4, 0, 1)  # redden
+        pcd_L_vis.colors = o3d.utility.Vector3dVector(L_colors)
+
+    pcd_M_wrt_L_vis = o3d.geometry.PointCloud(pcd_M_wrt_L)
+    M_colors = np.asarray(pcd_M_wrt_L_vis.colors)
+    if len(M_colors) > 0:
+        # keep RGB but bias green+blue up so it reads cyan while still showing texture
+        M_colors[:, 1] = np.clip(M_colors[:, 1] * 0.6 + 0.4, 0, 1)
+        M_colors[:, 2] = np.clip(M_colors[:, 2] * 0.6 + 0.4, 0, 1)
+        pcd_M_wrt_L_vis.colors = o3d.utility.Vector3dVector(M_colors)
+
+    # Coord frames at origin (cam_L frame) and at cam_M position
+    frame_L = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+    # cam_M origin in cam_L frame = -R^T @ T
+    cam_M_origin_in_L = (-R.T @ T_vec).ravel()
+    frame_M = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+    M_pose = np.eye(4)
+    M_pose[:3, :3] = R.T
+    M_pose[:3, 3] = cam_M_origin_in_L
+    frame_M.transform(M_pose)
+
+    print(f"cam_M origin in cam_L frame: {cam_M_origin_in_L}")
+
+    print("\nOpen3D controls:  mouse-drag=rotate  shift+drag=pan  scroll=zoom  "
+          "R=reset view  Q=quit")
+    print("Keys: 1=toggle cam_L (red)  2=toggle cam_M (cyan)  3=show both")
+    print("Legend:  RED-TINTED = cam_L.  CYAN = cam_M transformed into cam_L frame.\n")
+
+    # Interactive viewer with keyboard toggles
+    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis.create_window(window_name="Stereo calib check — cam_L (red) + cam_M->L (cyan)")
+    for g in (pcd_L_vis, pcd_M_wrt_L_vis, frame_L, frame_M):
+        vis.add_geometry(g)
+
+    state = {"L": True, "M": True}
+    def _refresh():
+        vis.clear_geometries()
+        if state["L"]:
+            vis.add_geometry(pcd_L_vis, reset_bounding_box=False)
+        if state["M"]:
+            vis.add_geometry(pcd_M_wrt_L_vis, reset_bounding_box=False)
+        vis.add_geometry(frame_L, reset_bounding_box=False)
+        vis.add_geometry(frame_M, reset_bounding_box=False)
+
+    def toggle_L(v):
+        state["L"] = not state["L"]; _refresh(); return False
+    def toggle_M(v):
+        state["M"] = not state["M"]; _refresh(); return False
+    def show_both(v):
+        state["L"] = True; state["M"] = True; _refresh(); return False
+
+    vis.register_key_callback(ord("1"), toggle_L)
+    vis.register_key_callback(ord("2"), toggle_M)
+    vis.register_key_callback(ord("3"), show_both)
+    vis.run()
+    vis.destroy_window()
 
 
     

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Convert a Qualisys TSV (3D mocap export, single marker) into a ROS1 bag with
 geometry_msgs/PointStamped on /marker_1, time-aligned to the original recording.
 

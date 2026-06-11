@@ -1,0 +1,96 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 70
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+      Splitter Ratio: 0.5
+    Tree Height: 489
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Name: Time
+    SyncMode: 0
+    SyncSource: ""
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    # Camera display — shows image with 3D overlay
+    - Class: rviz/Camera
+      Enabled: true
+      Image Rendering: background and overlay
+      Image Topic: /cam_L/color/image_raw
+      Name: cam_L
+      Queue Size: 2
+      Transport Hint: raw
+      Value: true
+      Zoom Factor: 1
+
+    # Calibration markers (red spheres projected onto image)
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /calibration_markers
+      Name: CalibrationMarkers
+      Queue Size: 100
+      Value: true
+
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: cam_L_color_optical_frame
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 3
+      Enable Stereo Rendering:
+        Value: false
+      Field of View: 0.785
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.5
+      Target Frame: <Fixed Frame>
+      Yaw: 0.785
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 1016
+  Hide Left Dock: false
+  Hide Right Dock: true
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Views:
+    collapsed: false
+  Width: 1848
+  X: 72
+  Y: 27

@@ -8,3 +8,5 @@ from .vis_utils import draw_markers, draw_epilines, combine_stereo_images, undis
     stereo_rectify_and_combine_images, plot_depth_map, plot_disparity_map, plot_object_points, \
     plot_left_and_right_detected_corners, plot_left_right_errors, plot_reprojection_errors, \
     plot_reprojected_over_detected_points
+
+from .detection_viz import save_interpolation_plot, save_detection_visualizations

@@ -164,4 +164,7 @@ cython_debug/
 results/
 dataset/
 calib_data/
+calibration_logs
+.codex
+deprecated/
 *.mp4

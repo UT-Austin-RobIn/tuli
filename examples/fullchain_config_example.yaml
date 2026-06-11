@@ -1,0 +1,67 @@
+# Configuration for visualize_fullchain.py
+#
+# Each camera needs either:
+#   (a) T_mc_wrt_mcR + stereo_R + stereo_T  (direct: qualisys -> camera)
+#   (b) parent + stereo_R + stereo_T         (chained: parent_camera -> camera)
+#
+# T_mc_wrt_mcR: 4x4 matrix from Qualisys XML (column-major convention)
+#   Row mapping: [r11, r21, r31, x/1000], [r12, r22, r32, y/1000], ...
+#
+# stereo_R, stereo_T: from calibration_results.json ("rot" and "trans")
+#
+# parent: name of another camera in this config (must be defined before this one)
+#   Used for chaining, e.g. cam_M chains through cam_L
+#
+# frame_id: ROS TF frame for this camera's point cloud
+# color: [r, g, b] for the marker sphere in RViz
+
+num_markers: 1
+sphere_radius: 0.02
+
+cameras:
+  # --- cam_L: qualisys_mcR -> mocap_cam_L -> cam_L ---
+  cam_L:
+    frame_id: cam_L_color_optical_frame
+    color: [1.0, 0.0, 0.0]  # red
+    calib_json: /home/robotlearning2/stereo-calib/results/run_qualisys_cam_L_0415/calibration_results.json
+    calib_side: right  # cam_L was imagePoints2 in stereoCalibrate
+    T_mc_wrt_mcR:
+      - [-0.990246, -0.117860,  0.074307,  0.430092]
+      - [ 0.116163, -0.403907,  0.907395,  1.183180]
+      - [-0.076932,  0.907176,  0.413659,  0.601314]
+      - [ 0.0,       0.0,       0.0,       1.0]
+    stereo_R:
+      - [0.9214887542999279, -0.14956163068584713, 0.35845473120794125]
+      - [0.06071675957014203, 0.9670117681998827, 0.24738980429726265]
+      - [-0.38362996599075616, -0.20620271285685504, 0.9001713672431515]
+    stereo_T: [-0.06369020851562411, -0.12660002566035414, -0.07502812005036086]
+
+  # --- cam_M: cam_L -> cam_M (chained through cam_L) ---
+  cam_M:
+    frame_id: cam_M_color_optical_frame
+    color: [0.0, 1.0, 0.0]  # green
+    parent: cam_L
+    calib_json: /home/robotlearning2/stereo-calib/results/run_cam_L_cam_M_0415/calibration_results.json
+    calib_side: right  # cam_M was imagePoints2 in stereoCalibrate
+    stereo_R:
+      - [0.5455487620452182, 0.0880283478630799, -0.8334431943470573]
+      - [-0.08683809867875968, 0.9950530255772374, 0.04825578625868275]
+      - [0.8335680493209825, 0.0460487378989074, 0.550494160631273]
+    stereo_T: [0.8177247899774109, -0.1814802546095008, 0.2769541565538596]
+
+  # --- cam_R: qualisys_mcR -> mocap_cam_R -> cam_R ---
+  cam_R:
+    frame_id: cam_R_color_optical_frame
+    color: [0.0, 0.0, 1.0]  # blue
+    calib_json: /home/robotlearning2/stereo-calib/results/run_qualisys_cam_R_0415/calibration_results.json
+    calib_side: right  # cam_R was imagePoints2 in stereoCalibrate
+    T_mc_wrt_mcR:
+      - [ 0.219072, -0.412099,  0.884410,  1.462361]
+      - [ 0.975663,  0.101270, -0.194488,  0.181976]
+      - [-0.009416,  0.905493,  0.424256,  0.583612]
+      - [ 0.0,       0.0,       0.0,       1.0]
+    stereo_R:
+      - [0.8840417964019007, 0.224572581233019, -0.40992347819177094]
+      - [-0.15782415559538332, 0.9689267845188937, 0.19045320200112564]
+      - [0.43995640480063986, -0.1036727640232304, 0.892014753170977]
+    stereo_T: [0.900046138703061, -0.28528900870608004, 0.3111966011976698]

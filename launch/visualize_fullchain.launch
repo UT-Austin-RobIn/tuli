@@ -1,0 +1,19 @@
+<launch>
+  <arg name="bag_file" doc="Combined rosbag (cameras + markers)"/>
+  <arg name="rviz_config" default="$(dirname)/rviz_fullchain.rviz"/>
+  <arg name="loop" default="false"/>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <!-- Rosbag playback -->
+  <node pkg="rosbag" type="play" name="bag_player"
+        args="--clock --loop $(arg bag_file)" if="$(arg loop)"/>
+  <node pkg="rosbag" type="play" name="bag_player"
+        args="--clock $(arg bag_file)" unless="$(arg loop)"/>
+
+  <!-- RViz -->
+  <node pkg="rviz" type="rviz" name="rviz"
+        args="-d $(arg rviz_config)">
+    <env name="ROS_NAMESPACE" value="/"/>
+  </node>
+</launch>
