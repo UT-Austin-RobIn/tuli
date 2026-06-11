@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 
 from misc_utils import extract_images_from_ros
 
@@ -13,33 +14,30 @@ def clear_jpgs(folder: Path):
     for image_path in folder.glob("*.jpg"):
         image_path.unlink()
 
+def parse_args():
+    args = argparse.ArgumentParser()
+    args.add_argument("--folder_name", type=str, required=True,
+                        help="Session folder, e.g. 26_05_09_infant_010")
+    args.add_argument("--left_topic", type=str, default="/cam_L/color/image_raw",
+                        help="Left ROS topic")
+    args.add_argument("--right_topic", type=str, default="/cam_M/color/image_raw",
+                        help="Right ROS topic")
+    return args.parse_args()
 
 def main():
-    rosbag_path = Path(
-        prompt_with_default(
-            "ROS bag path",
-            "/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag",
-        )
-    ).expanduser()
+    args = parse_args()
+    root_folder_path = "/home/robotlearning2/infants/data/calibration_data"
+    folder_name = args.folder_name
+    rosbag_path = f"{root_folder_path}/{folder_name}/left_to_mid/ros.bag"
 
-    left_topic = prompt_with_default("Left ROS topic", "/cam_L/color/image_raw")
-    right_topic = prompt_with_default("Right ROS topic", "/cam_M/color/image_raw")
+    left_topic = args.left_topic
+    right_topic = args.right_topic
 
-    left_output = Path(
-        prompt_with_default(
-            "Left output folder",
-            "/home/robotlearning2/stereo-calib/dataset/left",
-        )
-    ).expanduser()
-    right_output = Path(
-        prompt_with_default(
-            "Right output folder",
-            "/home/robotlearning2/stereo-calib/dataset/right",
-        )
-    ).expanduser()
+    left_output = f"{root_folder_path}/{folder_name}/left_to_mid/left_images"
+    right_output = f"{root_folder_path}/{folder_name}/left_to_mid/right_images"
 
-    clear_jpgs(left_output)
-    clear_jpgs(right_output)
+    clear_jpgs(Path(left_output))
+    clear_jpgs(Path(right_output))
 
     extract_images_from_ros(
         time_str=None,

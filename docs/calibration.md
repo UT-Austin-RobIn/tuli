@@ -45,7 +45,7 @@ Use the following naming convention for this calibration data collection session
 ```
 
 
-# 3. Calibrate `RS_left` → `Qualisys_left`
+# 3. Collect data for calibrating `RS_left` → `Qualisys_left`
 
 ## 3.1 Start Camera Stream
 
@@ -109,7 +109,7 @@ Press `Ctrl+C` in the terminal that was running `./start_camera_for_calibration 
 
 ---
 
-# 4. Calibrate `RS_right` → `Qualisys_right`
+# 4. Collect data for calibrating `RS_right` → `Qualisys_right`
 
 ## 4.1 Start Camera Stream
 
@@ -167,7 +167,7 @@ Press `Ctrl+C` in the terminal that was running `./start_camera_for_calibration 
 
 ---
 
-# 5. Calibrate `RS_mid` → `RS_left`
+# 5. Collect data for calibrating `RS_mid` → `RS_left`
 
 No Qualisys recording is required for this step.
 
@@ -194,7 +194,7 @@ If not, contact Arpit or Daniel.
 In a new terminal:
 
 ```bash
-python infants/scripts/record_for_calibration.py --right_to_left --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --left_to_mid --folder_name {yy_mm_dd_infant_XXX}
 ```
 
 Perform the calibration data collection procedure.
@@ -231,3 +231,15 @@ So, finally we should have the following in the `~/infants/data/calibration_data
 6. `{yy_mm_dd}_left_to_qualisys.tsv`
 7. `{yy_mm_dd}_right_to_qualisys.tsv`
 8. `qualisys_calibration_file.qca`
+
+
+# 7. Preparing images for calibration
+```bash
+python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_image.py --folder_name {folder_name}  #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
+```
+
+# 8. Run calibration
+```bash
+```
