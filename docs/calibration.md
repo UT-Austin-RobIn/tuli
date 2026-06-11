@@ -206,8 +206,7 @@ Perform the calibration data collection procedure.
 Open Windows PowerShell and run:
 
 ```bash
-scp C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd}_left_to_qualisys_Miqus_10_31039.avi \
-robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/yy_mm_dd_infant_{XXX}/left_to_qualisys/
 
 scp C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd}_left_to_qualisys.tsv \
 robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
