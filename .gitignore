@@ -6,6 +6,7 @@ data/
 *.bag
 *.pyc
 *.tsv
+*.pyc
 .codex
 .ros
 .transfer_data.log

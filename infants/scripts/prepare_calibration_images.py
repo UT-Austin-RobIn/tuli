@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import argparse
 from misc_utils import build_paired_dataset, extract_images_from_ros, extract_images_from_video
 
 
@@ -7,20 +7,36 @@ def prompt_with_default(label, default_value):
     value = input(f"{label} [{default_value}]: ").strip()
     return value or default_value
 
+def read_qualisys_start_time(tsv_path):
+    for line in Path(tsv_path).read_text().splitlines():
+        if line.startswith("TIME_STAMP\t"):
+            return line.split("\t", 2)[1].strip()
+    raise ValueError(f"TIME_STAMP not found in {tsv_path}")
+
+def parse_args():
+    args = argparse.ArgumentParser()
+    args.add_argument("--folder_name", type=str, required=True,
+                        help="Session folder, e.g. 26_05_09_infant_010")
+    args.add_argument("--type", type=str, required=True,
+                        choices=["left_to_qualisys", "right_to_qualisys"],
+                        help="Calibration type")
+    args.add_argument("--left_topic", type=str, default="/cam_L/color/image_raw",
+                        help="Left ROS topic")
+    args.add_argument("--right_topic", type=str, default="/cam_R/color/image_raw",
+                        help="Right ROS topic")
+    return args.parse_args()
 
 def main():
-    video_path = Path(prompt_with_default("Qualisys video path", "qualisys_video.avi")).expanduser()
-    rosbag_path = Path(
-        prompt_with_default(
-            "ROS bag path",
-            "/home/robotlearning2/infants/data/0/trial_001/trial_ros.bag",
-        )
-    ).expanduser()
+    args = parse_args()
+    root_folder_path = "/home/robotlearning2/infants/data/calibration_data"
+    folder_name = args.folder_name
+    video_path = f"{root_folder_path}/{folder_name}/{args.type}/{folder_name}_{args.type}_Miqus_1_31039.avi"
+    rosbag_path = f"{root_folder_path}/{folder_name}/{args.type}/ros.bag"
 
-    qualisys_output = Path(prompt_with_default("Qualisys output folder", "qualisys_camera_images")).expanduser()
-    ros_output = Path(prompt_with_default("ROS output folder", "rs_images")).expanduser()
-    topic_name = prompt_with_default("ROS topic", "/cam_L/color/image_raw")
-    resize_qualisys = prompt_with_default("Crop Qualisys image to match the size of Realsense image?", "y").lower() in {"y", "yes"}
+    qualisys_output = f"{root_folder_path}/{folder_name}/{args.type}/qualisys_images"
+    ros_output = f"{root_folder_path}/{folder_name}/{args.type}/rs_images"
+    topic_name = args.left_topic if args.type == "left_to_qualisys" else args.right_topic
+    resize_qualisys = True
 
     extract_images_from_video(
         video_path=str(video_path),
@@ -28,11 +44,11 @@ def main():
         resize_frame=resize_qualisys,
     )
 
-    match_frames = prompt_with_default("Match frames? (y/n)", "n").lower() in {"y", "yes"}
+    match_frames = True
     if match_frames:
-        qualisys_start_time = input("Qualisys start time [YYYY-MM-DD, HH:MM:SS.mmm]: ").strip()
-        if not qualisys_start_time:
-            raise ValueError("Qualisys start time is required for frame matching")
+        tsv_path = f"{root_folder_path}/{folder_name}/{args.type}/{folder_name}_{args.type}.tsv"
+        qualisys_start_time = read_qualisys_start_time(tsv_path)
+        print(f"Qualisys start time: {qualisys_start_time}")
 
         match = extract_images_from_ros(
             time_str=qualisys_start_time,
@@ -40,8 +56,8 @@ def main():
             rosbag_path=str(rosbag_path),
             output_folder=str(ros_output),
         )
-        left_output = Path(prompt_with_default("Paired left output folder", "/home/robotlearning2/stereo-calib/dataset/left")).expanduser()
-        right_output = Path(prompt_with_default("Paired right output folder", "/home/robotlearning2/stereo-calib/dataset/right")).expanduser()
+        left_output = f"{root_folder_path}/{folder_name}/{args.type}/left_images"
+        right_output = f"{root_folder_path}/{folder_name}/{args.type}/right_images"
         build_paired_dataset(
             qualisys_source_folder=str(qualisys_output),
             ros_source_folder=str(ros_output),

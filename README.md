@@ -4,6 +4,11 @@ You can open this file in chrome for a better viewing experience.
 Point the browser to 
 `file:///home/robotlearning2/infants/notes.md` 
 
+Windows machine log in info:
+username: "ut austin" (you will need to use "" cause of the spacebar)
+password: 1234
+To ssh: ssh "ut austin"@192.168.253.101
+
 Linux machine log in info:  
 username: `robotlearning2`  
 password: `robotlearning2`  
@@ -46,6 +51,17 @@ Subject ID should be an integer. Task should be in `[bang, slide, hammer]`.
 8. Say `[y/n]` to keep trial or delete.
 
 
+Once the entire session for an infant is finished, and Mark has transferred all the mocap data to "Roberto project", run the following script to transfer the data from windows to NAS  
+```bash
+python infants/scripts/transfer_windows_to_nas.py \
+  'D:\Roberto project\{014}' \
+  {2026-06-09_14-02-01} \
+  --host 192.168.253.101 \
+  --user "ut austin" \
+  --nas-root ~/synology-tuli
+# Change the values in {}
+```
+
 ## Visualizing Data
 
 `TODO: Daniel add exact instructions here`
@@ -75,3 +91,9 @@ rosbag play <path to bag>
 
 ### Quicksheet for commands 
 To rsync data: `rsync -r --info=progress2 data /home/robotlearning2/synology-tuli/`  
+
+### Synology Troubleshooting
+1. Make sure it is switched on (blue light should be visible on the big black box)
+2. http://192.168.253.1:5000/#/signin
+3. https://finds.synology.com/#
+4. http://169.254.68.74:5000/

@@ -1,3 +1,4 @@
+import argparse
 import subprocess
 import time
 import yaml
@@ -83,8 +84,8 @@ def get_ntp_offset(retries=3, timeout_s=5):
             time.sleep(0.5)
     raise RuntimeError(f"NTP offset failed after {retries} attempts: {last_error}")
 
-def copy_and_cleanup_background(subject_path: Path):
-    """Spawn a detached background process to copy data to NAS and clean up locally."""
+def copy_and_cleanup_background(subject_path: Path, delete_local: bool = False):
+    """Spawn a detached background process to copy data to NAS."""
     dest_path = NAS_PATH / subject_path.name
     log_file = subject_path.parent / f".transfer_{subject_path.name}.log"
 
@@ -94,6 +95,7 @@ from pathlib import Path
 
 subject = Path("{subject_path}")
 dest = Path("{dest_path}")
+delete_local = {delete_local}
 log = open("{log_file}", "a")
 sys.stdout = log
 sys.stderr = log
@@ -115,9 +117,13 @@ if remote_size < local_size * 0.99:
     print(f"[BG ERROR] Size mismatch: local={{local_size}}, NAS={{remote_size}}. Keeping local data.")
     sys.exit(1)
 
-print(f"[BG] Verified (local={{local_size}}, NAS={{remote_size}}). Removing local data...")
-shutil.rmtree(subject)
-print("[BG] Done. Local data removed.")
+print(f"[BG] Verified (local={{local_size}}, NAS={{remote_size}}).")
+if delete_local:
+    print("[BG] Removing local data...")
+    shutil.rmtree(subject)
+    print("[BG] Done. Local data removed.")
+else:
+    print("[BG] Done. Local data kept.")
 """
     subprocess.Popen(
         [sys.executable, "-c", script],
@@ -126,6 +132,10 @@ print("[BG] Done. Local data removed.")
         stderr=subprocess.DEVNULL,
     )
     print(f"[INFO] Background transfer started for {subject_path.name}.")
+    if delete_local:
+        print("[INFO] Local data will be removed after successful transfer.")
+    else:
+        print("[INFO] Local data will be kept after transfer.")
     print(f"[INFO] Check progress: cat {log_file}")
 
 def flush_stdin():
@@ -338,7 +348,18 @@ def append_to_csv(subject_path: Path, metadata_dict):
         writer.writerow(metadata_dict)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run infant experiment trials.")
+    parser.add_argument(
+        "--delete-local-after-transfer",
+        action="store_true",
+        help="Remove the local subject folder after a successful NAS transfer",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     rospy.init_node("experiment_driver", anonymous=True, disable_signals=True)
     if keyboard is None:
         print(f"[ERROR] pynput not available: {_PYNPUT_IMPORT_ERROR}")
@@ -397,8 +418,11 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] Experiment ended by user.")
 
-    # Copy to NAS and clean up in background so user can start next experiment immediately
-    copy_and_cleanup_background(subject_path)
+    # Copy to NAS in background so user can start next experiment immediately
+    copy_and_cleanup_background(
+        subject_path,
+        delete_local=args.delete_local_after_transfer,
+    )
 
 
 if __name__ == "__main__":

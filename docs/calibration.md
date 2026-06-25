@@ -79,7 +79,7 @@ In a new terminal on linux:
 python infants/scripts/record_for_calibration.py --left_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
 ```
 
-Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_left_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
+Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_infant_XXX_left_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
 
 Then stop:
 - the Qualisys recording by pressing the red button
@@ -137,7 +137,7 @@ In a new terminal:
 python infants/scripts/record_for_calibration.py --right_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
 ```
 
-Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_right_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
+Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_infant_XXX_right_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
 
 Then stop:
 - the Qualisys recording by pressing the red button
@@ -206,15 +206,15 @@ Perform the calibration data collection procedure.
 Open Windows PowerShell and run:
 
 ```bash
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/left_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/left_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/left_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/left_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/right_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/right_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/right_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/right_to_qualisys/
 
-scp 'C:\Users\UT Austin\Downloads\{yy_mm_dd_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp 'C:\Users\UT Austin\Downloads\{yy_mm_dd_infant_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
 ```
 
 So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_infant_00X}` folder:
@@ -230,7 +230,7 @@ So, finally we should have the following in the `~/infants/data/calibration_data
 
 # 7. Preparing images for calibration
 ```bash
-python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_images.py --folder_name {folder_name} --type left_to_qualisys  #  26_06_09_infant_014
 python infants/scripts/prepare_calibration_image.py --folder_name {folder_name}  #  26_06_09_infant_014
 python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
 ```

@@ -79,7 +79,7 @@ def save_frame(msg, count, output_folder):
 
     # Save image
     cv2.imwrite(filename, cv_img)
-    print(f"Saved {filename}")
+    # print(f"Saved {filename}")
 
 def qualisys_time_to_unix(time_str, timezone_name="America/Chicago"):
     local_tz = pytz.timezone(timezone_name)
@@ -134,6 +134,7 @@ def extract_images_from_ros(time_str=None,
             f"Starting ROS extraction at frame {start_frame} "
             f"(timestamp {match['ros_time']:.6f}, diff {match['diff_sec']:.6f}s)"
         )
+        # breakpoint()
     else:
         match = {}
         start_frame = 0
@@ -149,7 +150,7 @@ def extract_images_from_ros(time_str=None,
                 count += 1
             frame_idx += 1
 
-    print(f"Saved {count} ROS frames to '{output_folder}'")
+    # print(f"Saved {count} ROS frames to '{output_folder}'")
     match["saved_timestamps"] = saved_timestamps
     return match
 
@@ -175,7 +176,9 @@ def _closest_index(sorted_values, target):
     before_diff = abs(sorted_values[before_idx] - target)
     after_diff = abs(sorted_values[after_idx] - target)
     if after_diff < before_diff:
+        print("after diff: ", after_diff)
         return after_idx
+    print("before diff: ", before_diff)
     return before_idx
 
 
