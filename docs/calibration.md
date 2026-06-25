@@ -221,10 +221,10 @@ So, finally we should have the following in the `~/infants/data/calibration_data
 1. `left_to_qualisys/ros.bag`
 2. `right_to_qualisys/ros.bag`
 3. `right_to_left/ros.bag`
-4. `left_to_qualisys/{yy_mm_dd}_left_to_qualisys_Miqus_10_31039.avi`
-5. `right_to_qualisys/{yy_mm_dd}_right_to_qualisys_Miqus_10_31041.avi`
-6. `left_to_qualisys/{yy_mm_dd}_left_to_qualisys.tsv`
-7. `right_to_qualisys/{yy_mm_dd}_right_to_qualisys.tsv`
+4. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys_Miqus_10_31039.avi`
+5. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys_Miqus_10_31041.avi`
+6. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys.tsv`
+7. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys.tsv`
 8. `qualisys_calibration_file.qca`
 
 
