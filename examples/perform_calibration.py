@@ -40,12 +40,8 @@ def main():
 
     repo_root = Path(__file__).resolve().parent.parent
     default_data_path = Path(args.data_path).expanduser().resolve() if args.data_path else repo_root / "dataset"
-    default_left_path = default_data_path / "left"
-    default_right_path = default_data_path / "right"
-
-    # Prompt for input folders, using the current dataset paths as defaults.
-    left_path = prompt_path("Left image folder", default_left_path, must_exist=True)
-    right_path = prompt_path("Right image folder", default_right_path, must_exist=True)
+    left_path = default_data_path / "left_images"
+    right_path = default_data_path / "right_images"
 
     # Root for all calibration run outputs.
     default_output_root = repo_root / "results"

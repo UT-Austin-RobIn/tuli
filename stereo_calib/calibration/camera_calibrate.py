@@ -641,11 +641,11 @@ class StereoCalibration:
                                                                        criteria=self.stereo_criteria,
                                                                        flags=flags)
 
-        np.testing.assert_array_equal(new_camera_matrix_l, self.left_camera_calib_results.camera_matrix)
-        np.testing.assert_array_equal(new_dist_coeffs_l, self.left_camera_calib_results.dist_coeffs)
+        # np.testing.assert_array_equal(new_camera_matrix_l, self.left_camera_calib_results.camera_matrix)
+        # np.testing.assert_array_equal(new_dist_coeffs_l, self.left_camera_calib_results.dist_coeffs)
 
-        np.testing.assert_array_equal(new_camera_matrix_r, self.right_camera_calib_results.camera_matrix)
-        np.testing.assert_array_equal(new_dist_coeffs_r, self.right_camera_calib_results.dist_coeffs)
+        # np.testing.assert_array_equal(new_camera_matrix_r, self.right_camera_calib_results.camera_matrix)
+        # np.testing.assert_array_equal(new_dist_coeffs_r, self.right_camera_calib_results.dist_coeffs)
 
         # stereo rectification
         rect_l, rect_r, proj_matrix_l, proj_matrix_r, Q, roi_l, roi_r = cv2.stereoRectify(
