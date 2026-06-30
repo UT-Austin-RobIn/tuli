@@ -12,6 +12,7 @@ TOPICS=(
   "/cam_R/color/image_raw"
   "/cam_R/aligned_depth_to_color/image_raw"
 )
+AUDIO_TOPIC="/audio/audio"
 
 echo "[INFO] ROS_MASTER_URI=${ROS_MASTER_URI:-<unset>}"
 if ! timeout 2s rostopic list >/dev/null 2>&1; then
@@ -37,6 +38,14 @@ while true; do
     fi
   done
 
+  if timeout 3s rostopic echo -n 1 "$AUDIO_TOPIC" >/dev/null 2>&1; then
+    echo "[OK] $AUDIO_TOPIC"
+    present+=("$AUDIO_TOPIC")
+  else
+    echo "[MISS] $AUDIO_TOPIC"
+    missing+=("$AUDIO_TOPIC")
+  fi
+
   if ((${#present[@]} > 0)); then
     echo
     echo "[INFO] Sampling rates for available topics (5s)..."
@@ -46,10 +55,25 @@ while true; do
   if ((${#missing[@]} > 0)); then
     echo
     echo "[WARN] Missing ${#missing[@]} topic(s): ${missing[*]}"
-    echo "[HINT] USB contention likely if RealSense logs show RS2_USB_STATUS_BUSY."
+    camera_missing=false
+    audio_missing=false
+    for topic in "${missing[@]}"; do
+      if [[ "$topic" == "$AUDIO_TOPIC" ]]; then
+        audio_missing=true
+      else
+        camera_missing=true
+      fi
+    done
+    if $camera_missing; then
+      echo "[HINT] USB contention likely if RealSense logs show RS2_USB_STATUS_BUSY."
+    fi
+    if $audio_missing; then
+      echo "[HINT] Audio may have failed to start. Check: rosnode list | grep audio"
+      echo "[HINT] Verify ALSA device with: arecord -l  (USB mic is often hw:2,0)"
+    fi
   else
     echo
-    echo "[OK] All 6 camera topics are active."
+    echo "[OK] All 6 camera topics and audio are active."
   fi
 
   echo "[INFO] Rechecking in ${INTERVAL_SEC}s. Press Ctrl+C to stop."

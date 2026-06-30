@@ -1,0 +1,86 @@
+<launch>
+  <arg name="bag_file"/>
+  <arg name="rviz_config"/>
+  <arg name="loop_bag" default="true"/>
+  <arg name="bag_delay" default="1.0"/>
+  <arg name="subsample" default="2"/>
+  <arg name="cameras" default="L"/>
+  <arg name="fixed_camera" default="L"/>
+  <arg name="show_cam_L" default="true"/>
+  <arg name="show_cam_M" default="false"/>
+  <arg name="show_cam_R" default="false"/>
+  <arg name="show_markers" default="false"/>
+  <arg name="show_calib_tf" default="false"/>
+  <arg name="use_mcr_frame" default="false"/>
+  <arg name="debug_layout" default="false"/>
+  <arg name="calib_config" default=""/>
+
+  <param name="/use_sim_time" value="true"/>
+
+  <!-- Point cloud publishers (launch-prefix must not use bash -c or __name:= remaps are dropped) -->
+  <node if="$(arg show_cam_L)" name="depth_to_pointcloud_L"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+    <param name="color_topic" value="/cam_L/color/image_raw"/>
+    <param name="depth_topic" value="/cam_L/aligned_depth_to_color/image_raw"/>
+    <param name="camera_info_topic" value="/cam_L/color/camera_info"/>
+    <param name="output_topic" value="/cam_L/points"/>
+    <param name="subsample" value="$(arg subsample)"/>
+  </node>
+
+  <node if="$(arg show_cam_M)" name="depth_to_pointcloud_M"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+    <param name="color_topic" value="/cam_M/color/image_raw"/>
+    <param name="depth_topic" value="/cam_M/aligned_depth_to_color/image_raw"/>
+    <param name="camera_info_topic" value="/cam_M/color/camera_info"/>
+    <param name="output_topic" value="/cam_M/points"/>
+    <param name="subsample" value="$(arg subsample)"/>
+  </node>
+
+  <node if="$(arg show_cam_R)" name="depth_to_pointcloud_R"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+    <param name="color_topic" value="/cam_R/color/image_raw"/>
+    <param name="depth_topic" value="/cam_R/aligned_depth_to_color/image_raw"/>
+    <param name="camera_info_topic" value="/cam_R/color/camera_info"/>
+    <param name="output_topic" value="/cam_R/points"/>
+    <param name="subsample" value="$(arg subsample)"/>
+  </node>
+
+  <!-- Align clouds in qualisys_mcR or across camera frames -->
+  <node if="$(arg show_calib_tf)" name="calib_tf_broadcaster"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_calib_tf_broadcaster.sh">
+    <param name="config" value="$(arg calib_config)"/>
+    <param name="cameras" value="$(arg cameras)"/>
+    <param name="fixed_camera" value="$(arg fixed_camera)"/>
+    <param name="use_mcr_frame" value="$(arg use_mcr_frame)"/>
+    <param name="debug_layout" value="$(arg debug_layout)"/>
+  </node>
+
+  <!-- Optional marker overlay (published in qualisys_mcR when use_mcr_frame) -->
+  <node if="$(arg show_markers)" name="marker_transformer"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_marker_transformer.sh">
+    <param name="config" value="$(arg calib_config)"/>
+    <param name="cameras" value="$(arg cameras)"/>
+    <param name="reference_frame" value="qualisys_mcR" if="$(arg use_mcr_frame)"/>
+    <param name="reference_frame" value="cameras" unless="$(arg use_mcr_frame)"/>
+  </node>
+
+  <!-- Rosbag playback -->
+  <node pkg="rosbag" type="play" name="bag_player"
+        args="--clock --loop --delay=$(arg bag_delay) $(arg bag_file)"
+        if="$(arg loop_bag)"
+        required="false"/>
+  <node pkg="rosbag" type="play" name="bag_player_once"
+        args="--clock --delay=$(arg bag_delay) $(arg bag_file)"
+        unless="$(arg loop_bag)"
+        required="false"/>
+
+  <!-- RViz -->
+  <node pkg="rviz" type="rviz" name="rviz"
+        args="-d $(arg rviz_config)"
+        required="true"/>
+</launch>

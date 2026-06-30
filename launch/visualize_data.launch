@@ -1,31 +1,36 @@
 <launch>
   <!-- Runtime arguments -->
   <arg name="bag_file" default="$(env HOME)/infants/data/smoke_test/20260302_235500_smoke.bag"/>
-  <arg name="rviz_config" default="$(env HOME)/infants/launch/rviz.rviz"/>
+  <arg name="rviz_config" default="$(env HOME)/infants/launch/rviz_pointcloud.rviz"/>
   <arg name="fixed_frame" default="cam_L_color_optical_frame"/>
   <arg name="loop_bag" default="true"/>
+  <arg name="bag_delay" default="1.0"/>
 
   <param name="/use_sim_time" value="true"/>
 
-  <!-- === 1. Nodelet Manager === -->
-  <node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager"/>
-
-  <!-- === 2. RGB-D to PointCloud2 === -->
-  <node pkg="nodelet" type="nodelet" name="pointcloud_xyzrgb"
-        args="load depth_image_proc/point_cloud_xyzrgb nodelet_manager">
-    <param name="approximate_sync" value="true"/>
-    <remap from="image_rect_color" to="/cam_L/color/image_raw"/>
-    <remap from="depth_registered" to="/cam_L/aligned_depth_to_color/image_raw"/>
-    <remap from="camera_info" to="/cam_L/color/camera_info"/>
+  <!-- === 1. RGB-D to PointCloud2 === -->
+  <node name="depth_to_pointcloud"
+        pkg="rosout"
+        type="rosout"
+        output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+    <param name="subsample" value="2"/>
   </node>
 
-  <!-- === 3. Rosbag Playback === -->
-  <node pkg="rosbag" type="play" name="bag_player" args="--clock --loop $(arg bag_file)" if="$(arg loop_bag)"/>
-  <node pkg="rosbag" type="play" name="bag_player_once" args="--clock $(arg bag_file)" unless="$(arg loop_bag)"/>
+  <!-- === 2. Rosbag Playback === -->
+  <node pkg="rosbag" type="play" name="bag_player"
+        args="--clock --loop --delay=$(arg bag_delay) $(arg bag_file)"
+        if="$(arg loop_bag)"
+        required="false"/>
+  <node pkg="rosbag" type="play" name="bag_player_once"
+        args="--clock --delay=$(arg bag_delay) $(arg bag_file)"
+        unless="$(arg loop_bag)"
+        required="false"/>
 
-  <!-- === 4. RViz Visualization === -->
+  <!-- === 3. RViz Visualization === -->
   <node pkg="rviz" type="rviz" name="rviz"
-        args="-d $(arg rviz_config)">
+        args="-d $(arg rviz_config)"
+        required="true">
     <env name="ROS_NAMESPACE" value="/"/>
   </node>
 </launch>

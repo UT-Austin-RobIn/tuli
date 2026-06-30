@@ -54,7 +54,7 @@ Subject ID should be an integer. Task should be in `[bang, slide, hammer]`.
 Once the entire session for an infant is finished, and Mark has transferred all the mocap data to "Roberto project", run the following script to transfer the data from windows to NAS  
 ```bash
 python infants/scripts/transfer_windows_to_nas.py \
-  'D:\Roberto project\{014}' \
+  'D:\Roberto_project\{014}' \
   {2026-06-09_14-02-01} \
   --host 192.168.253.101 \
   --user "ut austin" \
@@ -65,9 +65,44 @@ python infants/scripts/transfer_windows_to_nas.py \
 ## Visualizing Data
 
 `TODO: Daniel add exact instructions here`
-1. Annotate the mocap markers (Usually Mark does this)
+1. Annotate the mocap markers (Optional)
 2. Transfer the 3 RGB camera videos and the tsv file to the data folder which has ros bags on synology
-3. ...
+```bash
+scp windows:D:/Roberto_project/015/26_06_24_infant_015_2.tsv /home/robotlearning2/synology-tuli/2026-06-24_09-40-52/trial_002/
+
+scp windows:D:/Roberto_project/015/26_06_29_infant_017_1.c3d /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/
+
+```
+3. Put marker data into rosbag
+```bash
+  python infants/scripts/process_marker_c3d.py   \
+  --file_path /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/26_06_29_017_1.c3d \
+  --tsv /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/26_06_29_017_1.tsv \
+  --num-markers 1 \
+  --camera-bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros.bag
+```
+
+4. Visualize on RS image
+```bash  
+python infants/scripts/overlay_markers_on_image.py \
+  --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
+  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
+  --camera L \
+  --num-markers 300
+```
+
+5. Visualize in rviz 
+```bash
+python infants/scripts/run_trial_viz.py \
+  --bag  /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
+  --cameras L \
+  --markers \
+  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml
+```
+
+Test audio:
+Terminal 1: roslaunch audio_play play.launch
+Terminal 2: rosbag play --clock /path/to/trial_ros.bag
 
 ---
 Old 
@@ -97,3 +132,12 @@ To rsync data: `rsync -r --info=progress2 data /home/robotlearning2/synology-tul
 2. http://192.168.253.1:5000/#/signin
 3. https://finds.synology.com/#
 4. http://169.254.68.74:5000/
+
+
+Troubleshooting:
+
+If you see "no new messgaes"
+# Stop leftover bag playback
+rosnode kill /play_*   # or kill the trial_viz / visualize launch
+# Restore wall-clock time
+rosparam set /use_sim_time false

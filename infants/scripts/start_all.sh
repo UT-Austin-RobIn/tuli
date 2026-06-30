@@ -47,9 +47,9 @@ while (( SECONDS < deadline )); do
   sleep 5
 done
 
-# echo "[INFO] Launching audio..."
-# roslaunch --wait audio_capture capture.launch \
-#   ns:=audio/ device:=hw:1,0 sample_rate:=44100 channels:=1 &
+echo "[INFO] Launching audio..."
+roslaunch --wait audio_capture capture.launch \
+  ns:=audio/ device:=hw:1,0 sample_rate:=44100 channels:=1 &
 
 echo "[ERROR] Timed out waiting for all camera topics."
 echo "[ERROR] Missing topics: ${missing[*]}"

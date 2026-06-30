@@ -214,7 +214,7 @@ scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_
 
 scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/right_to_qualisys/
 
-scp 'C:\Users\UT Austin\Downloads\{yy_mm_dd_infant_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp windows:D:/Roberto_project/{XXX}/{yy_mm_dd_infant_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
 ```
 
 So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_infant_00X}` folder:
@@ -225,16 +225,22 @@ So, finally we should have the following in the `~/infants/data/calibration_data
 5. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys_Miqus_10_31041.avi`
 6. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys.tsv`
 7. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys.tsv`
-8. `qualisys_calibration_file.qca`
+8. `{yy_mm_dd_infant_XXX}_mocap_calibration.txt`
 
 
 # 7. Preparing images for calibration
 ```bash
 python infants/scripts/prepare_calibration_images.py --folder_name {folder_name} --type left_to_qualisys  #  26_06_09_infant_014
-python infants/scripts/prepare_calibration_image.py --folder_name {folder_name}  #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_image.py --folder_name {folder_name}  --type right_to_qualisys #  26_06_09_infant_014
 python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
 ```
 
 # 8. Run calibration
 ```bash
+python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/26_06_11_infant_014/left_to_qualisys
+```
+
+9. Export the calibration results to a unified yaml file
+```bash
+python infants/scripts/export_calibration_config.py --folder 26_06_29_infant_017
 ```
