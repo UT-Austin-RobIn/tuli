@@ -1,0 +1,18 @@
+name: tuli
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - numpy==1.26.*
+      - torch==2.11.*
+      - mujoco==3.5.*
+      - robosuite==1.5.*
+      - gymnasium==1.2.*
+      - moviepy==2.2.*  # gym RecordVideo backend (--save-video)
+      - matplotlib==3.10.*
+      - PyYAML==6.0.*
+      - wandb==0.26.*
+      - tensorboard==2.20.*

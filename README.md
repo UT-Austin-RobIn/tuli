@@ -5,7 +5,8 @@ Training Banging -> hammering policy under hard / soft contact materials.
 ## Setup
 
 ```bash
-conda activate tuli        # mujoco, robosuite, torch, gymnasium
+conda env create -f environment.yml    # once
+conda activate tuli
 cd ~/tuli
 ```
 
