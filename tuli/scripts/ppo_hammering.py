@@ -16,41 +16,33 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.normal import Normal
 
-from envs.banging_env import BangingEnv
+from envs.hammering_env import HammeringEnv
 from utils.ppo_logger import PPOLogger, build_iter_stats
 
-robosuite.environments.REGISTERED_ENVS["BangingEnv"] = BangingEnv
+robosuite.environments.REGISTERED_ENVS["HammeringEnv"] = HammeringEnv
 
 
 _CONFIG_DEFAULTS = {
-    "total_timesteps": 1500000,
-
-    "reward_divisor": 622.2,
-
-    "material": "hard",
-
     "bound_coef": 0.0,
-
     "adaptive_kl": False,
     "desired_kl":  0.01,
     "lr_min":      1.0e-5,
     "lr_max":      1.0e-2,
-
     "vec_env_type": "sync",
-
     "drop_gripper": True,
-
     "osc_kp": 150,
-
     "min_air_steps": 5,
-
-    "use_air_gate": True,
-
-    "require_new_contact": False,
-
     "min_delta_fn": 0.0,
-
     "joint_torque_limits": None,
+
+    "reward_divisor": 622.2,
+    "material": "hard",
+
+    "reward_mode":    "target",   # "target" | "repeat"
+    "target_pos":     [0.0, 0.0], # world-frame XY of target (target mode) / initial anchor (repeat)
+    "target_radius":  0.03,       # target cylinder radius (target mode)
+    "target_height":  0.005,
+    "repeat_sigma":   0.05,       # proximity σ for repeat mode
 }
 
 
@@ -90,19 +82,22 @@ class _DropGripperAction(gym.ActionWrapper):
 
 def make_robosuite_env(reward_divisor=622.2,
                        material="hard", min_air_steps=5,
-                       use_air_gate=True, min_delta_fn=0.0,
-                       require_new_contact=False,
-                       joint_torque_limits=None,
+                       min_delta_fn=0.0, joint_torque_limits=None,
                        horizon=500, control_freq=20,
-                       drop_gripper=False, osc_kp=150):
+                       drop_gripper=False, osc_kp=150,
+                       reward_mode="target",
+                       target_pos=(0.0, 0.0),
+                       target_radius=0.03,
+                       target_height=0.005,
+                       repeat_sigma=0.05):
     import robosuite
     from robosuite.wrappers import GymWrapper
     from robosuite.controllers import load_composite_controller_config
 
     def thunk():
         import robosuite as _rs
-        from envs.banging_env import BangingEnv as _BE
-        _rs.environments.REGISTERED_ENVS["BangingEnv"] = _BE
+        from envs.hammering_env import HammeringEnv as _HE
+        _rs.environments.REGISTERED_ENVS["HammeringEnv"] = _HE
 
         controller_config = load_composite_controller_config(robot="Panda")
         controller_config["body_parts"]["right"]["type"] = "OSC_POSITION"
@@ -111,7 +106,7 @@ def make_robosuite_env(reward_divisor=622.2,
         controller_config["body_parts"]["right"]["kp"] = osc_kp
 
         env = robosuite.make(
-            "BangingEnv",
+            "HammeringEnv",
             robots=["Panda"],
             controller_configs=controller_config,
             has_renderer=False,
@@ -124,10 +119,13 @@ def make_robosuite_env(reward_divisor=622.2,
             reward_divisor=reward_divisor,
             material=material,
             min_air_steps=min_air_steps,
-            use_air_gate=use_air_gate,
-            require_new_contact=require_new_contact,
             min_delta_fn=min_delta_fn,
             joint_torque_limits=joint_torque_limits,
+            reward_mode=reward_mode,
+            target_pos=tuple(target_pos),
+            target_radius=target_radius,
+            target_height=target_height,
+            repeat_sigma=repeat_sigma,
         )
         env = GymWrapper(env, keys=[
             "robot0_joint_pos_cos",
@@ -138,6 +136,7 @@ def make_robosuite_env(reward_divisor=622.2,
             "cube_quat",
             "cube_table_contact_binary",
             "contact_force",
+            "hammer_target_xy",
         ])
         env.metadata = {"render_fps": control_freq}
 
@@ -226,10 +225,39 @@ class Agent(nn.Module):
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
 
 
+def warm_start_from_checkpoint(agent, ckpt):
+    src = ckpt["agent"]
+    dst = agent.state_dict()
+    full, partial, skipped = [], [], []
+    for k, v in src.items():
+        if k not in dst:
+            skipped.append(k)
+            continue
+        t = dst[k]
+        if t.shape == v.shape:
+            dst[k] = v
+            full.append(k)
+        elif (v.ndim == 2 and t.ndim == 2
+              and t.shape[0] == v.shape[0] and t.shape[1] >= v.shape[1]):
+            new_t = torch.zeros_like(t)
+            new_t[:, :v.shape[1]] = v.to(new_t.dtype)
+            dst[k] = new_t
+            partial.append(k)
+        else:
+            print(f"[warm-start] skip {k}: shape {tuple(v.shape)} !-> "
+                  f"{tuple(t.shape)} (unhandled)", flush=True)
+            skipped.append(k)
+    agent.load_state_dict(dst)
+    return full, partial, skipped
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str, help="path to YAML config file")
-    args = load_config(parser.parse_args().config)
+    parser.add_argument("--pretrained", type=str, default=None,
+                        help="optional path to a banging checkpoint to warm-start from")
+    cli_args, _ = parser.parse_known_args()
+    args = load_config(cli_args.config)
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"{args.name}_{ts}"
@@ -246,14 +274,17 @@ if __name__ == "__main__":
     env_fns = [make_robosuite_env(reward_divisor=args.reward_divisor,
                                   material=args.material,
                                   min_air_steps=args.min_air_steps,
-                                  use_air_gate=args.use_air_gate,
-                                  require_new_contact=args.require_new_contact,
                                   min_delta_fn=args.min_delta_fn,
                                   joint_torque_limits=args.joint_torque_limits,
                                   horizon=args.horizon,
                                   control_freq=args.control_freq,
                                   drop_gripper=args.drop_gripper,
-                                  osc_kp=args.osc_kp)
+                                  osc_kp=args.osc_kp,
+                                  reward_mode=args.reward_mode,
+                                  target_pos=args.target_pos,
+                                  target_radius=args.target_radius,
+                                  target_height=args.target_height,
+                                  repeat_sigma=args.repeat_sigma)
                for _ in range(args.num_envs)]
     if args.vec_env_type == "async":
         print(f"[vec_env] AsyncVectorEnv with {args.num_envs} subprocess workers "
@@ -265,6 +296,30 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+
+    if cli_args.pretrained:
+        ckpt = torch.load(cli_args.pretrained, map_location=device, weights_only=False)
+        full, partial, skipped = warm_start_from_checkpoint(agent, ckpt)
+        print(f"[warm-start] {cli_args.pretrained}: "
+              f"copied {len(full)}, partial-copied {len(partial)} {partial}, "
+              f"skipped {len(skipped)} {skipped}", flush=True)
+
+        if "obs_rms" in ckpt:
+            new_dim  = int(np.array(envs.single_observation_space.shape).prod())
+            src_mean = np.asarray(ckpt["obs_rms"]["mean"], dtype=np.float64)
+            src_var  = np.asarray(ckpt["obs_rms"]["var"],  dtype=np.float64)
+            pad = new_dim - src_mean.shape[0]
+            padded = {
+                "mean":  np.concatenate([src_mean, np.zeros(pad)]) if pad > 0 else src_mean,
+                "var":   np.concatenate([src_var,  np.ones(pad)])  if pad > 0 else src_var,
+                "count": float(ckpt["obs_rms"]["count"]),
+            }
+            set_obs_rms(envs, padded)
+            print(f"[warm-start] installed obs_rms (dim {src_mean.shape[0]}->{new_dim}, "
+                  f"count={padded['count']:.1f}) into {envs.num_envs} envs", flush=True)
+        else:
+            print("[warm-start] checkpoint has no obs_rms; using fresh normalization",
+                  flush=True)
 
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
