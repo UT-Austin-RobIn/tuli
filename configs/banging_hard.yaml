@@ -1,0 +1,43 @@
+experiment:
+  name: banging_hard
+  seed: 1
+  torch_deterministic: true
+  device: cuda
+
+environment:
+  reward_divisor: 622.2
+  material: hard
+  min_air_steps: 5
+  min_delta_fn: 20.0
+  horizon: 500
+  control_freq: 20
+  joint_torque_limits:
+    2: 25
+    4: 25
+
+training:
+  total_timesteps: 3000000
+  learning_rate: 3.0e-4
+  num_envs: 32
+  num_steps: 1024
+  vec_env_type: async
+  anneal_lr: true
+  gamma: 0.99
+  gae_lambda: 0.95
+  num_minibatches: 16
+  update_epochs: 10
+  norm_adv: true
+  clip_coef: 0.2
+  clip_vloss: true
+  ent_coef: 0.02
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: null
+  bound_coef: 0.001
+
+logging:
+  track: true
+  wandb_project: tuli
+  wandb_entity: null
+  save_model: true
+  num_checkpoints: 5

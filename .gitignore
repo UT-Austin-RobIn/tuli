@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Experiment outputs / artifacts (regenerated, large)
+runs/
+wandb/
+*.log
+
+# Large data blobs — recorded traces, checkpoints.
+# data.npz is the banging trace for calibrate_reward_scale.py; force-add
+# (git add -f data.npz) if you decide the calibration trace must be versioned.
+*.npz
+*.cleanrl_model
+
+# Installers / local tooling that must never be committed
+Miniconda3-latest-Linux-x86_64.sh
+
+# OS cruft
+.DS_Store
