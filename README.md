@@ -5,7 +5,7 @@ Training Banging -> hammering policy under hard / soft contact materials.
 ## Setup
 
 ```bash
-conda env create -f environment.yml    # once
+conda env create -f environment.yml    
 conda activate tuli
 cd ~/tuli
 ```
