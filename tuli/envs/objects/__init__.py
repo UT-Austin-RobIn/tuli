@@ -1,3 +1,3 @@
-from .rattle_cube import CubeObject, CUBE_MATERIALS
+from .materials import MATERIALS, CubeObject
 
-__all__ = ["CubeObject", "CUBE_MATERIALS"]
+__all__ = ["MATERIALS", "CubeObject"]

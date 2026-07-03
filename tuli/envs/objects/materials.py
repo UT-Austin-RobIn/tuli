@@ -10,49 +10,38 @@ from robosuite.utils.mjcf_utils import (
 )
 
 
-# Material presets calibrated from physical properties.
-# Table surface: Oak hardwood (E=12 GPa, ν=0.40).
-# See docs/material_calibration.md for derivation and references.
-CUBE_MATERIALS = {
-    "soft_cube": {
-        "density": 50.0,
-        "solref": "0.04 0.52",
-        "friction": "0.57 0.005 0.0001",
-        "rgba": (0.9, 0.85, 0.2, 1.0),       # yellow-ish sponge
+MATERIALS = {
+    "hard": {
+        "cube_density": 500.0,
+        "cube_size": 0.04,
+        "cube_solref": (0.006, 0.28),
+        "cube_friction": (0.40, 0.002, 0.0001),
+        "cube_rgba": (0.2, 0.6, 0.9, 1.0),
+        "table_solref": (0.006, 0.28),
+        "table_friction": (1.0, 0.005, 0.0001),
     },
-    "plastic_cube": {
-        "density": 1050.0,
-        "solref": "0.006 0.28",
-        "friction": "0.40 0.002 0.0001",
-        "rgba": (0.2, 0.6, 0.9, 1.0),         # blue plastic
-    },
-    "metal_cube": {
-        "density": 7850.0,
-        "solref": "0.0024 0.16",
-        "friction": "0.30 0.001 0.00005",
-        "rgba": (0.7, 0.7, 0.75, 1.0),        # metallic grey
+    "soft": {
+        "cube_density": 150.0,
+        "cube_size": 0.04,
+        "cube_solref": (0.02, 1.0),
+        "cube_friction": (0.40, 0.002, 0.0001),
+        "cube_rgba": (0.9, 0.7, 0.3, 1.0),
+        "table_solref": (0.02, 1.0),
+        "table_friction": (1.0, 0.005, 0.0001),
     },
 }
 
 
 class CubeObject(MujocoGeneratedObject):
 
-    def __init__(
-        self,
-        name,
-        material="plastic_cube",
-        size=0.04,
-        joints=None,
-    ):
-        assert material in CUBE_MATERIALS, \
-            f"material must be one of {list(CUBE_MATERIALS.keys())}, got {material!r}"
-
-        self.size = size
-        mat = CUBE_MATERIALS[material]
-        self.cube_density = mat["density"]
-        self.cube_solref = mat["solref"]
-        self.cube_friction = mat["friction"]
-        self.cube_rgba = mat["rgba"]
+    def __init__(self, name, material="hard", joints=None):
+        mat = MATERIALS[material]
+        self.material = material
+        self.size = mat["cube_size"]
+        self.cube_density = mat["cube_density"]
+        self.cube_solref = array_to_string(mat["cube_solref"])
+        self.cube_friction = array_to_string(mat["cube_friction"])
+        self.cube_rgba = mat["cube_rgba"]
 
         if joints == "default":
             self.joint_specs = [self.get_joint_attrib_template()]

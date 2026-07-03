@@ -1,3 +1,4 @@
+import warnings
 import xml.etree.ElementTree as ET
 
 import mujoco
@@ -8,15 +9,11 @@ from robosuite.models.arenas import TableArena
 from robosuite.models.tasks import ManipulationTask
 from robosuite.utils.observables import Observable, sensor
 
-from .objects.rattle_cube import CubeObject, CUBE_MATERIALS
-
-VALID_OBJECT_TYPES = tuple(CUBE_MATERIALS.keys())
+from .objects.materials import MATERIALS, CubeObject
 
 CONTACT_CUBE_TABLE = "cube_table"
 
-_REWARD_SCALE = 99.5
-
-REWARD_MODES = ("sustained", "impact")
+_REWARD_DIVISOR = 622.2
 
 
 class BangingEnv(ManipulationEnv):
@@ -29,7 +26,6 @@ class BangingEnv(ManipulationEnv):
         gripper_types="default",
         base_types="default",
         initialization_noise="default",
-        object_type="plastic_cube",
         table_full_size=(0.8, 0.8, 0.05),
         table_friction=(1.0, 5e-3, 1e-4),
         use_camera_obs=False,
@@ -54,33 +50,45 @@ class BangingEnv(ManipulationEnv):
         renderer="mjviewer",
         renderer_config=None,
         seed=None,
-        reward_scale=_REWARD_SCALE,
-        reward_mode="sustained",
+        reward_divisor=_REWARD_DIVISOR,
+        material="hard",
+        min_air_steps=5,
+        min_delta_fn=0.0,
+        use_air_gate=True,
+        require_new_contact=False,
+        joint_torque_limits=None,
     ):
-        assert object_type in VALID_OBJECT_TYPES, \
-            f"object_type must be one of {VALID_OBJECT_TYPES}, got {object_type!r}"
-        assert reward_mode in REWARD_MODES, \
-            f"reward_mode must be one of {REWARD_MODES}, got {reward_mode!r}"
-
-        self.object_type = object_type
+        self.material = material
+        self._mat     = MATERIALS[material]
 
         self.table_full_size = table_full_size
-        self.table_friction  = table_friction
+        self.table_friction  = tuple(self._mat["table_friction"])
         self.table_offset    = np.array((0, 0, 0.8))
 
         self.use_object_obs  = use_object_obs
         self.use_contact_obs = use_contact_obs
 
-        self.reward_scale = reward_scale
-        self.reward_mode  = reward_mode
+        self.reward_divisor    = reward_divisor
+        self.reward_scale      = 1.0  # read by robosuite GymWrapper (reward_range)
+        self.min_air_steps     = int(min_air_steps)
+        self.min_delta_fn      = float(min_delta_fn)
+        self.use_air_gate      = bool(use_air_gate)
+        self.require_new_contact = bool(require_new_contact)
+        self._joint_torque_limits = dict(joint_torque_limits) if joint_torque_limits else {}
 
         self.cube_body_id       = None
         self.cube_geom_id       = None
         self.table_geom_id      = None
+        self.gripper_body_id    = None
 
-        self._outer_events    = {}
-        self._total_outer_fn  = 0.0
-        self._impact_outer_fn = 0.0
+        self._outer_events       = {}
+        self._accum_outer        = {}
+        self._total_outer_fn     = 0.0
+        self._prev_total_fn      = 0.0
+        self._last_delta_fn      = 0.0
+        self._new_contact_step   = False
+        self._air_run            = 0
+        self._last_air_factor    = 0.0
 
         self._current_contacts = {
             CONTACT_CUBE_TABLE: [],
@@ -115,40 +123,79 @@ class BangingEnv(ManipulationEnv):
             seed=seed,
         )
 
-    def _post_action(self, action):
-        self._detect_contacts()
-        return super()._post_action(action)
+    def _update_observables(self, force=False):
+        super()._update_observables(force=force)
+        # lite_physics: forces solve in step2, not _pre_action (stale there) -- accumulate here only.
+        if not force:
+            self._accumulate_contacts()
 
-    def _detect_contacts(self):
+    def _accumulate_contacts(self):
+        self._merge_peaks(self._accum_outer, self._scan_outer())
+
+    @staticmethod
+    def _merge_peaks(accum, scan):
+        for pair, fn in scan.items():
+            accum[pair] = max(accum.get(pair, 0.0), fn)
+
+    def _scan_outer(self):
+        scan = {}
+        if self.cube_geom_id is None or self.table_geom_id is None:
+            return scan
         contact_force = np.zeros(6, dtype=np.float64)
-        current_outer = {}
-
         for i in range(self.sim.data.ncon):
             contact = self.sim.data.contact[i]
             g1, g2  = contact.geom1, contact.geom2
-            pair    = (min(g1, g2), max(g1, g2))
-            mujoco.mj_contactForce(
-                self.sim.model._model, self.sim.data._data, i, contact_force
-            )
-            fn = float(abs(contact_force[0]))
-
             if g1 == self.table_geom_id or g2 == self.table_geom_id:
                 other = g2 if g1 == self.table_geom_id else g1
                 if other == self.cube_geom_id:
-                    current_outer[pair] = max(current_outer.get(pair, 0.0), fn)
+                    pair = (min(g1, g2), max(g1, g2))
+                    mujoco.mj_contactForce(
+                        self.sim.model._model, self.sim.data._data, i, contact_force
+                    )
+                    fn = float(abs(contact_force[0]))
+                    scan[pair] = max(scan.get(pair, 0.0), fn)
+        return scan
+
+    def _post_action(self, action):
+        self._detect_contacts()
+        reward, done, info = super()._post_action(action)
+        info["delta_fn"]    = float(self._last_delta_fn)
+        info["new_contact"] = bool(self._new_contact_step)
+        info["air_factor"]  = float(self._last_air_factor)
+        info["air_run"]     = int(self._air_run)
+        return reward, done, info
+
+    def _detect_contacts(self):
+        self._merge_peaks(self._accum_outer, self._scan_outer())
+        current_outer = self._accum_outer
 
         for pair in set(self._outer_events) - set(current_outer):
             del self._outer_events[pair]
 
-        self._total_outer_fn  = 0.0
-        self._impact_outer_fn = 0.0
+        self._total_outer_fn = 0.0
+        self._new_contact_step = False
         for pair, fn in current_outer.items():
             if pair not in self._outer_events:
                 self._outer_events[pair] = {"n_steps": 0}
+                self._new_contact_step = True
             self._outer_events[pair]["n_steps"] += 1
             self._total_outer_fn += fn
-            if self._outer_events[pair]["n_steps"] == 1:
-                self._impact_outer_fn += fn
+
+        in_contact_now = len(current_outer) > 0
+        if not self.use_air_gate:
+            self._last_air_factor = 1.0
+            if not in_contact_now:
+                self._air_run += 1
+            else:
+                self._air_run = 0
+        elif self._new_contact_step:
+            self._last_air_factor = 1.0 if self._air_run >= self.min_air_steps else 0.0
+            self._air_run = 0
+        elif in_contact_now:
+            self._last_air_factor = 0.0
+        else:
+            self._last_air_factor = 0.0
+            self._air_run += 1
 
         self._current_contacts = {
             CONTACT_CUBE_TABLE: [],
@@ -161,13 +208,22 @@ class BangingEnv(ManipulationEnv):
                 "is_new":       self._outer_events[pair]["n_steps"] == 1,
             })
 
+        self._last_delta_fn = abs(self._total_outer_fn - self._prev_total_fn)
+        self._prev_total_fn = self._total_outer_fn
+        self._accum_outer   = {}
+
     def get_contacts(self):
         return self._current_contacts
 
     def reward(self, action=None):
-        return float(np.clip(
-            self._total_outer_fn / self.reward_scale, 0.0, 1.0
-        ))
+        if self._last_delta_fn < self.min_delta_fn:
+            r = 0.0
+        elif self.require_new_contact and not self._new_contact_step:
+            r = 0.0
+        else:
+            r = float(self._last_delta_fn / self.reward_divisor)
+        r *= self._last_air_factor
+        return r
 
     def _load_model(self):
         super()._load_model()
@@ -184,7 +240,7 @@ class BangingEnv(ManipulationEnv):
 
         self.cube = CubeObject(
             name="banging_cube",
-            material=self.object_type,
+            material=self.material,
             joints="default",
         )
 
@@ -215,17 +271,35 @@ class BangingEnv(ManipulationEnv):
         )
         self.table_geom_id = self.sim.model.geom_name2id("table_collision")
 
+        gripper = self.robots[0].gripper.get("right")
+        if gripper is None:
+            gripper = list(self.robots[0].gripper.values())[0]
+        self.gripper_body_id = self.sim.model.body_name2id(gripper.root_body)
+
         self._augment_gripper_inertia()
+        self._apply_joint_torque_limits()
+        self._apply_table_compliance()
+
+    def _apply_table_compliance(self):
+        self.sim.model.geom_solref[self.table_geom_id] = np.array(
+            self._mat["table_solref"], dtype=np.float64
+        )
+
+    def _apply_joint_torque_limits(self):
+        if not self._joint_torque_limits:
+            return
+        for j, limit in self._joint_torque_limits.items():
+            name = f"robot0_torq_j{int(j)}"
+            try:
+                aid = self.sim.model.actuator_name2id(name)
+            except Exception:
+                warnings.warn(f"joint_torque_limits: actuator {name!r} not found, skipping")
+                continue
+            lim = float(abs(limit))
+            self.sim.model.actuator_ctrlrange[aid]  = [-lim, lim]
+            self.sim.model.actuator_forcerange[aid] = [-lim, lim]
 
     def _augment_gripper_inertia(self):
-        """
-        Lump welded cube mass + inertia into the gripper body so OSC gravity
-        compensation and mass-matrix terms account for the cube. Parallel-axis
-        shift + eigendecomposition into a principal inertia frame.
-
-        Offset of cube COM in gripper frame is [0, 0, 0.12] to match the weld
-        `relpose` in `_load_model`.
-        """
         gripper = self.robots[0].gripper.get("right")
         if gripper is None:
             gripper = list(self.robots[0].gripper.values())[0]
@@ -233,7 +307,7 @@ class BangingEnv(ManipulationEnv):
 
         full_side = 2.0 * self.cube.size
         m_c = self.cube.cube_density * (full_side ** 3)
-        r_c = np.array([0.0, 0.0, 0.12])   # cube COM in gripper-body frame
+        r_c = np.array([0.0, 0.0, 0.12])
 
         I_c_self = (1.0 / 6.0) * m_c * (full_side ** 2)
         I_c = np.eye(3) * I_c_self
@@ -269,12 +343,6 @@ class BangingEnv(ManipulationEnv):
         self.sim.model.body_iquat[gripper_body_id]   = iquat_total
         self.sim.model.body_inertia[gripper_body_id] = eigvals
 
-        # Cube is a separate free-floating body with its own mass; its gravity
-        # pulls on the gripper via the weld constraint as an external load that
-        # OSC gravity-comp does not see. Disable cube gravity so the gripper's
-        # augmented inertia is the single source of truth for the cube's mass.
-        # body_gravcomp=1.0 -> MuJoCo automatically applies an upward force on
-        # this body to exactly cancel gravity.
         self.sim.model.body_gravcomp[self.cube_body_id] = 1.0
 
         mujoco.mj_setConst(self.sim.model._model, self.sim.data._data)
@@ -306,7 +374,7 @@ class BangingEnv(ManipulationEnv):
             @sensor(modality=modality)
             def contact_force(obs_cache):
                 return np.array([
-                    float(np.clip(self._total_outer_fn / self.reward_scale, 0.0, 1.0))
+                    float(np.clip(self._total_outer_fn / self.reward_divisor, 0.0, 1.0))
                 ])
 
             @sensor(modality=modality)
@@ -330,8 +398,14 @@ class BangingEnv(ManipulationEnv):
         return observables
 
     def _reset_internal(self):
-        self._outer_events   = {}
-        self._total_outer_fn = 0.0
+        self._outer_events     = {}
+        self._accum_outer      = {}
+        self._total_outer_fn   = 0.0
+        self._prev_total_fn    = 0.0
+        self._last_delta_fn    = 0.0
+        self._new_contact_step = False
+        self._air_run          = 0
+        self._last_air_factor  = 0.0
 
         super()._reset_internal()
 
