@@ -22,9 +22,21 @@ password: `robotlearning2`
          Run: `sudo mount -t nfs 192.168.253.1:/volume1/tuli ~/synology-tuli` (password: robotlearning2 )
 4. Perform calibration by following [the calibration guide](docs/calibration.md)
 5. `cd ~/infants/`
-6. Launch the cameras: `./infants/scripts/start_all.sh`
-7. Verify that they start with `./infants/scripts/check_cams.sh`
-You should see all 6 camera topics (color image raw and aligned depth image raw for cameras L, M, R). 
+6. `arecord -l` Check what card # does "USB Audio" shows and ensure rs_cam.launch has that.
+7. Launch the cameras: `./infants/scripts/start_all.sh`
+8. Verify that they start with `./infants/scripts/check_cams.sh`
+You should see all 6 camera topics (color image raw and aligned depth image raw for cameras L, M, R) and audio!
+```bash
+                 topic                     rate   min_delta   max_delta   std_dev    window
+===========================================================================================
+/cam_L/color/image_raw                    29.93   0.02236     0.04497     0.003658   141   
+/cam_L/aligned_depth_to_color/image_raw   29.93   0.02354     0.04423     0.003293   141   
+/cam_M/color/image_raw                    29.94   0.02401     0.04426     0.003387   142   
+/cam_M/aligned_depth_to_color/image_raw   29.93   0.02458     0.04402     0.003249   142   
+/cam_R/color/image_raw                    29.99   0.02847     0.03942     0.001995   141   
+/cam_R/aligned_depth_to_color/image_raw   29.99   0.02894     0.039       0.001779   141   
+/audio/audio                              38.28   0.01948     0.0305      0.003658   141   
+``` 
 
 ## Running Trials
 

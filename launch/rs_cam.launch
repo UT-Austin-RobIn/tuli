@@ -43,7 +43,7 @@
 	</include>
 	<include file="$(find audio_capture)/launch/capture.launch">
 		<arg name="ns" value="audio/"/>
-		<arg name="device" value="hw:2,0"/>
+		<arg name="device" value="hw:1,0"/>
 		<arg name="sample_rate" value="44100"/>
   		<arg name="channels" value="1"/>
 	</include>

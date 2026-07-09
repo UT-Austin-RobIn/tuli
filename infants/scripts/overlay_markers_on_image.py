@@ -249,6 +249,7 @@ def main():
 
     processed = 0
     shown = 0
+    breakpoint()
     for i, (color_time, color_msg) in enumerate(zip(color_times, color_msgs)):
         if i % args.stride != 0:
             continue
