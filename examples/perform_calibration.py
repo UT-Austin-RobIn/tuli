@@ -44,8 +44,7 @@ def main():
     right_path = default_data_path / "right_images"
 
     # Root for all calibration run outputs.
-    default_output_root = repo_root / "results"
-    output_root = prompt_path("Results root folder", default_output_root, must_exist=False)
+    output_root = default_data_path if args.data_path else repo_root / "results" 
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_dir = output_root / f"run_{timestamp}"
