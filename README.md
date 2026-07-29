@@ -80,7 +80,7 @@ python infants/scripts/transfer_windows_to_nas.py \
 1. Annotate the mocap markers (Optional)
 2. Transfer the 3 RGB camera videos and the tsv file to the data folder which has ros bags on synology
 ```bash
-scp windows:D:/Roberto_project/015/26_06_24_infant_015_2.tsv /home/robotlearning2/synology-tuli/2026-06-24_09-40-52/trial_002/
+scp windows:D:/Roberto_project/015/26_06_24_infant_015_2.tsv /home/robotlearning2/infants/data/2026-06-24_09-40-52/trial_002/
 
 scp windows:D:/Roberto_project/015/26_06_29_infant_017_1.c3d /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/
 
