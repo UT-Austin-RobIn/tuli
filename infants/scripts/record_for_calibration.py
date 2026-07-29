@@ -4,7 +4,7 @@
 Usage:
     record_for_calibration.py --left_to_qualisys  --folder_name yy_mm_dd_infant_XXX
     record_for_calibration.py --right_to_qualisys --folder_name yy_mm_dd_infant_XXX
-    record_for_calibration.py --right_to_left     --folder_name yy_mm_dd_infant_XXX
+    record_for_calibration.py --left_to_mid       --folder_name yy_mm_dd_infant_XXX
 
 Press SPACE to start, then SPACE again to stop.
 Output: data/calibration_data/{folder_name}/{pair}/ros.bag
@@ -31,7 +31,7 @@ DATA_ROOT = Path("/home/robotlearning2/infants/data/calibration_data")
 PAIR_CAMS = {
     "left_to_qualisys": ["cam_L"],
     "right_to_qualisys": ["cam_R"],
-    "right_to_left": ["cam_L", "cam_M"],
+    "left_to_mid": ["cam_L", "cam_M"],
 }
 
 
@@ -78,7 +78,7 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--left_to_qualisys", action="store_true")
     group.add_argument("--right_to_qualisys", action="store_true")
-    group.add_argument("--right_to_left", action="store_true")
+    group.add_argument("--left_to_mid", action="store_true")
     parser.add_argument("--folder_name", required=True,
                         help="Session folder, e.g. 26_05_09_infant_010")
     args = parser.parse_args()
@@ -93,7 +93,7 @@ def main():
     elif args.right_to_qualisys:
         pair = "right_to_qualisys"
     else:
-        pair = "right_to_left"
+        pair = "left_to_mid"
 
     out_dir = DATA_ROOT / args.folder_name / pair
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -12,17 +12,28 @@ Examples:
       --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \\
       --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml
 
+  # Live audio + write MP4 (overlay + bag audio):
+  python infants/scripts/overlay_markers_on_image.py \\
+      --bag .../trial_ros_combined.bag --calib-config ... \\
+      --audio --save-mp4
+
   # Save frames instead of interactive playback:
   python infants/scripts/overlay_markers_on_image.py \\
-      --bag .../trial_ros_combined.bag \\
-      --calib-config .../calibration_markers.yaml \\
+      --bag .../trial_ros_combined.bag --calib-config ... \\
       --save-dir /tmp/marker_overlay
 """
+from __future__ import annotations
+
 import argparse
 import bisect
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -48,6 +59,8 @@ MARKER_COLORS_BGR = [
     (255, 0, 255),
     (255, 255, 0),
 ]
+
+DEFAULT_AUDIO_TOPIC = "/audio/audio"
 
 
 def imgmsg_to_bgr8(msg):
@@ -154,6 +167,77 @@ def load_bag_streams(bag, camera_name, num_markers):
     return K, dist, color_times, color_msgs, marker_streams, effective_markers
 
 
+def require_ffmpeg():
+    if shutil.which("ffmpeg") is None:
+        raise SystemExit("[ERROR] ffmpeg not found. Install with: sudo apt install ffmpeg")
+
+
+def load_audio_mp3(bag_path: Path, topic: str = DEFAULT_AUDIO_TOPIC) -> Tuple[Optional[bytes], Optional[float]]:
+    chunks = bytearray()
+    first_t = None
+    with rosbag.Bag(str(bag_path), "r") as bag:
+        topics = bag.get_type_and_topic_info().topics
+        if topic not in topics:
+            return None, None
+        for _, msg, t in bag.read_messages(topics=[topic]):
+            if not msg.data:
+                continue
+            if first_t is None:
+                first_t = t.to_sec()
+            chunks.extend(msg.data)
+    if not chunks:
+        return None, None
+    return bytes(chunks), first_t
+
+
+def start_ffplay(mp3_path: Path) -> subprocess.Popen:
+    if shutil.which("ffplay") is None:
+        raise SystemExit("[ERROR] ffplay not found (install ffmpeg). Needed for --audio.")
+    return subprocess.Popen(
+        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(mp3_path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def estimate_fps(times):
+    if len(times) < 2:
+        return 30.0
+    dts = np.diff(np.asarray(times, dtype=np.float64))
+    dts = dts[dts > 1e-6]
+    if len(dts) == 0:
+        return 30.0
+    return float(1.0 / np.median(dts))
+
+
+def mux_mp4(video_path: Path, audio_path: Optional[Path], output_path: Path, audio_offset_sec: float):
+    require_ffmpeg()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", str(video_path)]
+    if audio_path is not None:
+        if audio_offset_sec > 0:
+            cmd += ["-itsoffset", f"{audio_offset_sec:.6f}", "-i", str(audio_path)]
+        elif audio_offset_sec < 0:
+            cmd += ["-ss", f"{-audio_offset_sec:.6f}", "-i", str(audio_path)]
+        else:
+            cmd += ["-i", str(audio_path)]
+        cmd += [
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+    else:
+        cmd += [
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-an",
+            "-movflags", "+faststart",
+            str(output_path),
+        ]
+    subprocess.run(cmd, check=True)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Overlay Qualisys markers on RealSense color images."
@@ -204,6 +288,31 @@ def parse_args():
         type=int,
         help="Stop after this many processed frames",
     )
+    parser.add_argument(
+        "--audio",
+        action="store_true",
+        help="Play /audio/audio from the bag (ffplay), paced to bag time",
+    )
+    parser.add_argument(
+        "--audio-topic",
+        default=DEFAULT_AUDIO_TOPIC,
+        help=f"Audio topic in bag (default: {DEFAULT_AUDIO_TOPIC})",
+    )
+    parser.add_argument(
+        "--save-mp4",
+        action="store_true",
+        help="Write overlay MP4 next to the bag (<bag_stem>_overlay_<cam>.mp4)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="MP4 output path (implies saving; overrides default --save-mp4 name)",
+    )
+    parser.add_argument(
+        "--no-display",
+        action="store_true",
+        help="Skip OpenCV window (useful with --save-mp4 / --output)",
+    )
     return parser.parse_args()
 
 
@@ -233,11 +342,33 @@ def main():
             bag, cam_name, num_markers
         )
 
+    output_path = None
+    if args.output:
+        output_path = args.output.expanduser().resolve()
+    elif args.save_mp4:
+        output_path = bag_path.parent / f"{bag_path.stem}_overlay_{cam_key}.mp4"
+
+    # Continuous timeline when audio or MP4 export is on; classic mode skips empty frames.
+    continuous = bool(args.audio or output_path is not None)
+
+    play_audio = args.audio
+    mux_audio = output_path is not None
+    audio_bytes, audio_t0 = (None, None)
+    if play_audio or mux_audio:
+        audio_bytes, audio_t0 = load_audio_mp3(bag_path, args.audio_topic)
+        if audio_bytes is None:
+            if play_audio:
+                print(f"[WARN] No audio on {args.audio_topic}; continuing without live sound.")
+            play_audio = False
+            mux_audio = False
+
     print(f"Bag:        {bag_path}")
     print(f"Camera:     {cam_name}")
     print(f"Calib:      {config_path}")
     print(f"Markers:    {num_markers} ({', '.join(marker_streams)})")
     print(f"Color fr.:  {len(color_msgs)}")
+    print(f"Audio:      {play_audio}")
+    print(f"Save MP4:   {output_path if output_path else '(off)'}")
     print(f"K:\n{K}")
     if dist is not None:
         print(f"dist:       {dist.ravel()[:5]}...")
@@ -247,75 +378,148 @@ def main():
         save_dir = args.save_dir.expanduser().resolve()
         save_dir.mkdir(parents=True, exist_ok=True)
 
+    show_window = not args.no_display and save_dir is None
+    audio_proc = None
+    tmp_mp3 = None
+    tmp_video = None
+    writer = None
     processed = 0
     shown = 0
-    breakpoint()
-    for i, (color_time, color_msg) in enumerate(zip(color_times, color_msgs)):
-        if i % args.stride != 0:
-            continue
+    written_frames = 0
+    t0 = color_times[0]
+    audio_offset = (audio_t0 - t0) if (mux_audio and audio_t0 is not None) else 0.0
+    wall0 = time.perf_counter()
 
-        img = imgmsg_to_bgr8(color_msg)
-        img_overlay = img.copy()
-        matched = 0
+    try:
+        if play_audio:
+            tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            tmp_mp3 = Path(tmp.name)
+            tmp.write(audio_bytes)
+            tmp.close()
+            audio_delay = max(0.0, audio_offset)
+            if audio_delay > 0:
+                print(f"[audio] Delaying ffplay by {audio_delay:.3f}s to match bag")
+                time.sleep(audio_delay)
+            print(f"[audio] Starting ffplay: {tmp_mp3}")
+            audio_proc = start_ffplay(tmp_mp3)
+            wall0 = time.perf_counter() - audio_delay
 
-        for marker_idx, (topic, (m_times, m_msgs)) in enumerate(
-            sorted(marker_streams.items()), start=1
-        ):
-            marker_msg, marker_time = find_closest_msg(m_times, m_msgs, color_time)
-            if abs(color_time - marker_time) > args.max_time_diff:
+        for i, (color_time, color_msg) in enumerate(zip(color_times, color_msgs)):
+            if i % args.stride != 0:
                 continue
-            if not marker_is_valid(marker_msg):
-                continue
 
-            pt_mcR = np.array(
-                [
-                    marker_msg.point.x / 1000.0,
-                    marker_msg.point.y / 1000.0,
-                    marker_msg.point.z / 1000.0,
-                    1.0,
-                ]
+            if play_audio or (continuous and show_window):
+                target = wall0 + (color_time - t0)
+                delay = target - time.perf_counter()
+                if delay > 0:
+                    time.sleep(delay)
+
+            img = imgmsg_to_bgr8(color_msg)
+            img_overlay = img.copy()
+            matched = 0
+
+            for marker_idx, (_topic, (m_times, m_msgs)) in enumerate(
+                sorted(marker_streams.items()), start=1
+            ):
+                marker_msg, marker_time = find_closest_msg(m_times, m_msgs, color_time)
+                if abs(color_time - marker_time) > args.max_time_diff:
+                    continue
+                if not marker_is_valid(marker_msg):
+                    continue
+
+                pt_mcR = np.array(
+                    [
+                        marker_msg.point.x / 1000.0,
+                        marker_msg.point.y / 1000.0,
+                        marker_msg.point.z / 1000.0,
+                        1.0,
+                    ]
+                )
+                pt_cam = T_mcR_to_cam @ pt_mcR
+                if pt_cam[2] <= 0:
+                    continue
+
+                pixel = project_point_to_image(pt_cam[:3], K, dist)[0]
+                color = MARKER_COLORS_BGR[(marker_idx - 1) % len(MARKER_COLORS_BGR)]
+                img_overlay = overlay_point_on_image(
+                    img_overlay, pixel, color=color, radius=args.radius
+                )
+                matched += 1
+
+            processed += 1
+            if not continuous and matched == 0:
+                continue
+            shown += 1
+
+            label = f"t={color_time:.3f}  markers={matched}"
+            cv2.putText(
+                img_overlay,
+                label,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2,
             )
-            pt_cam = T_mcR_to_cam @ pt_mcR
-            if pt_cam[2] <= 0:
-                continue
 
-            pixel = project_point_to_image(pt_cam[:3], K, dist)[0]
-            color = MARKER_COLORS_BGR[(marker_idx - 1) % len(MARKER_COLORS_BGR)]
-            img_overlay = overlay_point_on_image(
-                img_overlay, pixel, color=color, radius=args.radius
-            )
-            matched += 1
+            if output_path is not None:
+                if writer is None:
+                    h, w = img_overlay.shape[:2]
+                    fps = estimate_fps(color_times[:: max(args.stride, 1)])
+                    tmp_video = Path(tempfile.mkstemp(prefix="overlay_vid_", suffix=".avi")[1])
+                    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+                    writer = cv2.VideoWriter(str(tmp_video), fourcc, fps, (w, h))
+                    if not writer.isOpened():
+                        raise SystemExit(f"Failed to open VideoWriter for {tmp_video}")
+                    print(f"[video] Recording temp AVI at ~{fps:.2f} fps ({w}x{h})")
+                writer.write(img_overlay)
+                written_frames += 1
 
-        processed += 1
-        if matched == 0:
-            continue
-        shown += 1
+            if save_dir:
+                out_path = save_dir / f"frame_{i:06d}.jpg"
+                cv2.imwrite(str(out_path), img_overlay)
+            elif show_window:
+                cv2.imshow(f"Marker overlay ({cam_name})", img_overlay)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27:
+                    break
 
-        label = f"t={color_time:.3f}  markers={matched}"
-        cv2.putText(
-            img_overlay,
-            label,
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (255, 255, 255),
-            2,
-        )
-
-        if save_dir:
-            out_path = save_dir / f"frame_{i:06d}.jpg"
-            cv2.imwrite(str(out_path), img_overlay)
-        else:
-            cv2.imshow(f"Marker overlay ({cam_name})", img_overlay)
-            key = cv2.waitKey(1) & 0xFF
-            if key == 27:
+            if args.max_frames and shown >= args.max_frames:
                 break
+    finally:
+        if show_window:
+            cv2.destroyAllWindows()
+        if writer is not None:
+            writer.release()
+        if audio_proc is not None and audio_proc.poll() is None:
+            audio_proc.terminate()
+            try:
+                audio_proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                audio_proc.kill()
 
-        if args.max_frames and shown >= args.max_frames:
-            break
-
-    if not save_dir:
-        cv2.destroyAllWindows()
+        try:
+            if output_path is not None and tmp_video is not None and tmp_video.is_file():
+                mux_mp3 = tmp_mp3
+                if mux_audio and mux_mp3 is None and audio_bytes is not None:
+                    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                    mux_mp3 = Path(tmp.name)
+                    tmp.write(audio_bytes)
+                    tmp.close()
+                    tmp_mp3 = mux_mp3
+                print(f"[video] Muxing MP4 -> {output_path}")
+                mux_mp4(
+                    tmp_video,
+                    mux_mp3 if mux_audio else None,
+                    output_path,
+                    audio_offset if mux_audio else 0.0,
+                )
+                print(f"[OK] Wrote {output_path} ({written_frames} frames)")
+        finally:
+            if tmp_video is not None:
+                tmp_video.unlink(missing_ok=True)
+            if tmp_mp3 is not None:
+                tmp_mp3.unlink(missing_ok=True)
 
     print(f"Processed {processed} color frames, drew markers on {shown}.")
     if save_dir:

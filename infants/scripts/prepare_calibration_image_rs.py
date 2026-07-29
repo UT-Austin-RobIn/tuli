@@ -14,6 +14,22 @@ def clear_jpgs(folder: Path):
     for image_path in folder.glob("*.jpg"):
         image_path.unlink()
 
+
+def trim_to_equal_count(left_folder: Path, right_folder: Path):
+    """Drop trailing frames so left/right counts match (stereo-calib requires equal N)."""
+    left = sorted(left_folder.glob("*.jpg"))
+    right = sorted(right_folder.glob("*.jpg"))
+    n = min(len(left), len(right))
+    dropped = left[n:] + right[n:]
+    for path in dropped:
+        path.unlink()
+    if dropped:
+        print(
+            f"[INFO] Trimmed to {n} pairs "
+            f"(was L={len(left)}, R={len(right)}; dropped {len(dropped)})"
+        )
+
+
 def parse_args():
     args = argparse.ArgumentParser()
     args.add_argument("--folder_name", type=str, required=True,
@@ -33,11 +49,11 @@ def main():
     left_topic = args.left_topic
     right_topic = args.right_topic
 
-    left_output = f"{root_folder_path}/{folder_name}/left_to_mid/left_images"
-    right_output = f"{root_folder_path}/{folder_name}/left_to_mid/right_images"
+    left_output = Path(f"{root_folder_path}/{folder_name}/left_to_mid/left_images")
+    right_output = Path(f"{root_folder_path}/{folder_name}/left_to_mid/right_images")
 
-    clear_jpgs(Path(left_output))
-    clear_jpgs(Path(right_output))
+    clear_jpgs(left_output)
+    clear_jpgs(right_output)
 
     extract_images_from_ros(
         time_str=None,
@@ -51,6 +67,7 @@ def main():
         rosbag_path=str(rosbag_path),
         output_folder=str(right_output),
     )
+    trim_to_equal_count(left_output, right_output)
 
     print(
         f"[INFO] Extracted RealSense calibration images to {left_output} and {right_output}."

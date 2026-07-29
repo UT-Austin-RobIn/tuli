@@ -94,27 +94,68 @@ scp windows:D:/Roberto_project/015/26_06_29_infant_017_1.c3d /home/robotlearning
   --camera-bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros.bag
 ```
 
-4. Visualize on RS image
-```bash  
+4. Visualize on RealSense RGB image (markers overlaid)
+
+Basic (no audio, OpenCV window only):
+```bash
+python infants/scripts/overlay_markers_on_image.py \
+  --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
+  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
+  --camera L
+```
+
+Optional flags:
+- `--audio` — play bag `/audio/audio` while showing frames (paced to bag time)
+- `--save-mp4` — write `<bag_stem>_overlay_<L|M|R>.mp4` next to the bag (includes audio if present)
+- `--output /path/to/out.mp4` — custom MP4 path (same as `--save-mp4` but choose the name)
+- `--no-display` — skip the OpenCV window (useful with `--save-mp4` only)
+
+Example with audio + MP4 export:
+```bash
 python infants/scripts/overlay_markers_on_image.py \
   --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
   --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
   --camera L \
-  --num-markers 300
+  --audio \
+  --save-mp4
 ```
 
-5. Visualize in rviz 
+5. Visualize in RViz (point clouds ± markers)
+
+Basic:
 ```bash
 python infants/scripts/run_trial_viz.py \
-  --bag  /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
+  --bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
   --cameras L \
   --markers \
   --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml
 ```
 
-Test audio:
-Terminal 1: roslaunch audio_play play.launch
-Terminal 2: rosbag play --clock /path/to/trial_ros.bag
+Add `--audio` to also start `audio_play` so bag audio plays with RViz (same bag must contain `/audio/audio`).
+Add `--record` to capture the screen (RViz + your view moves) via `record_rviz_screen.sh`:
+```bash
+python infants/scripts/run_trial_viz.py \
+  --bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
+  --cameras L \
+  --markers \
+  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
+  --audio \
+  --record
+```
+
+Optional recording flags:
+- `--record-output /path/to/out.mp4` — custom output path (default: `recordings/rviz_<bag>_<timestamp>.mp4`)
+- `--record-delay 2` — seconds to wait for RViz before starting capture (default: 2)
+
+Note: `--record` grabs the screen, then muxes bag `/audio/audio` into the MP4 (aligned using `--record-delay` vs `--bag-delay`). Live speaker playback still needs `--audio`.
+
+Manual audio-only test (without the viz scripts):
+```bash
+# Terminal 1
+roslaunch audio_play play.launch
+# Terminal 2
+rosbag play --clock /path/to/trial_ros.bag
+```
 
 ---
 Old 

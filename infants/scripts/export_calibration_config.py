@@ -26,6 +26,7 @@ DATA_ROOT = Path("/home/robotlearning2/infants/data/calibration_data")
 PAIR_DIRS = {
     "cam_L": ("left_to_qualisys",),
     "cam_R": ("right_to_qualisys",),
+    # right_to_left kept as legacy alias for older sessions
     "cam_M": ("left_to_mid", "right_to_left"),
 }
 

@@ -30,7 +30,8 @@ def main():
     args = parse_args()
     root_folder_path = "/home/robotlearning2/infants/data/calibration_data"
     folder_name = args.folder_name
-    video_path = f"{root_folder_path}/{folder_name}/{args.type}/{folder_name}_{args.type}_Miqus_1_31039.avi"
+    miqus_id = "Miqus_1_31039" if args.type == "left_to_qualisys" else "Miqus_10_31041"
+    video_path = f"{root_folder_path}/{folder_name}/{args.type}/{folder_name}_{args.type}_{miqus_id}.avi"
     rosbag_path = f"{root_folder_path}/{folder_name}/{args.type}/ros.bag"
 
     qualisys_output = f"{root_folder_path}/{folder_name}/{args.type}/qualisys_images"

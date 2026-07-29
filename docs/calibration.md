@@ -220,7 +220,7 @@ scp windows:D:/Roberto_project/{XXX}/{yy_mm_dd_infant_XXX}_mocap_calibration.txt
 So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_infant_00X}` folder:
 1. `left_to_qualisys/ros.bag`
 2. `right_to_qualisys/ros.bag`
-3. `right_to_left/ros.bag`
+3. `left_to_mid/ros.bag`
 4. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys_Miqus_10_31039.avi`
 5. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys_Miqus_10_31041.avi`
 6. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys.tsv`
@@ -236,11 +236,20 @@ python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_nam
 ```
 
 # 8. Run calibration
+
+Run stereo calibration once for each pair folder (all three are required for export):
+
 ```bash
-python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/26_06_11_infant_014/left_to_qualisys
+cd ~/stereo-calib
+source .venv/bin/activate
+python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/{folder_name}/left_to_qualisys
+python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/{folder_name}/right_to_qualisys
+python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/{folder_name}/left_to_mid
 ```
 
 9. Export the calibration results to a unified yaml file
 ```bash
+cd ~/infants
+source ~/envs/infants/bin/activate
 python infants/scripts/export_calibration_config.py --folder 26_06_29_infant_017
 ```
