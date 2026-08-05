@@ -197,8 +197,16 @@ def main():
     )
     parser.add_argument(
         "--loop",
+        dest="loop",
         action="store_true",
-        help="Loop bag playback (default: play once)",
+        default=None,
+        help="Loop bag playback (default: on for viewing, off when --record)",
+    )
+    parser.add_argument(
+        "--no-loop",
+        dest="loop",
+        action="store_false",
+        help="Play the bag only once",
     )
     parser.add_argument(
         "--bag-delay",
@@ -234,6 +242,10 @@ def main():
         help="Seconds to wait after launching RViz before starting screen record (default: 2)",
     )
     args = parser.parse_args()
+    # Viewing: loop so RViz does not go blank after one pass.
+    # Recording: play once unless the user passed --loop.
+    if args.loop is None:
+        args.loop = not args.record
 
     bag_path = args.bag.expanduser().resolve()
     if not bag_path.is_file():

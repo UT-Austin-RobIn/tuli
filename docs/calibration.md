@@ -8,6 +8,25 @@ This document describes the procedure for calibrating the following transforms:
 - `RS_right` → `Qualisys_right`
 - `RS_mid` → `RS_left`
 
+### Optional: guided capture helper
+
+Walkthrough for recording + transfer + file layout (names filled in):
+
+```bash
+cd ~/infants
+./infants/scripts/guided_calibration_capture.sh
+# or: ./infants/scripts/guided_calibration_capture.sh --date 26_07_30 --infant 017
+```
+
+Press ENTER at each pause. It will:
+1. Create a Windows session folder under `Documents\Qualisys0326\Data`
+2. Record left / right / mid on Linux (short Qualisys names: `left_to_qualisys`, …)
+3. `scp` Qualisys files to `calibration_data/from_windows/{session}/` (never overwrites Linux bags)
+4. Run `organize_calibration_session.py` to move/rename into the Linux session layout
+5. Print the prepare → stereo-calib → export commands
+
+The manual steps below still work (long Qualisys names + per-file scp).
+
 ---
 
 # 1. Mocap Calibration
@@ -203,6 +222,28 @@ Perform the calibration data collection procedure.
 
 # 6. Transfer Files to the Linux Machine
 
+## Guided / short-name transfer (recommended with the helper)
+
+Linux bags live under `~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/`.
+Copy Qualisys files to a **different** folder so they cannot overwrite bags:
+
+```powershell
+cd "C:\Users\UT Austin\Documents\Qualisys0326\Data"
+scp -r ".\yy_mm_dd_infant_XXX" robotlearning2@192.168.253.201:~/infants/data/calibration_data/from_windows/
+```
+
+That creates `~/infants/data/calibration_data/from_windows/yy_mm_dd_infant_XXX/`.
+
+Then organize (moves AVI/TSV/qca into the Linux session; never touches `ros.bag`):
+
+```bash
+cd ~/infants
+source ~/envs/infants/bin/activate
+python infants/scripts/organize_calibration_session.py --folder {yy_mm_dd_infant_XXX}
+```
+
+## Manual / long-name transfer (legacy)
+
 Open Windows PowerShell and run:
 
 ```bash
@@ -221,17 +262,17 @@ So, finally we should have the following in the `~/infants/data/calibration_data
 1. `left_to_qualisys/ros.bag`
 2. `right_to_qualisys/ros.bag`
 3. `left_to_mid/ros.bag`
-4. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys_Miqus_10_31039.avi`
-5. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys_Miqus_10_31041.avi`
-6. `left_to_qualisys/{yy_mm_dd_infant_XXX}}_left_to_qualisys.tsv`
-7. `right_to_qualisys/{yy_mm_dd_infant_XXX}}_right_to_qualisys.tsv`
+4. `left_to_qualisys/{yy_mm_dd_infant_XXX}_left_to_qualisys_Miqus_1_31039.avi`
+5. `right_to_qualisys/{yy_mm_dd_infant_XXX}_right_to_qualisys_Miqus_10_31041.avi`
+6. `left_to_qualisys/{yy_mm_dd_infant_XXX}_left_to_qualisys.tsv`
+7. `right_to_qualisys/{yy_mm_dd_infant_XXX}_right_to_qualisys.tsv`
 8. `{yy_mm_dd_infant_XXX}_mocap_calibration.txt`
 
 
 # 7. Preparing images for calibration
 ```bash
 python infants/scripts/prepare_calibration_images.py --folder_name {folder_name} --type left_to_qualisys  #  26_06_09_infant_014
-python infants/scripts/prepare_calibration_image.py --folder_name {folder_name}  --type right_to_qualisys #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_images.py --folder_name {folder_name}  --type right_to_qualisys #  26_06_09_infant_014
 python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
 ```
 

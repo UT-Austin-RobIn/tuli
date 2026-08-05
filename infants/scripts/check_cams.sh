@@ -1,9 +1,26 @@
 #!/bin/bash
+# Check RealSense + audio topics. Loops until Ctrl+C unless --once.
+#
+# Usage:
+#   ./infants/scripts/check_cams.sh          # keep rechecking
+#   ./infants/scripts/check_cams.sh --once   # one pass, then exit
 
 source /opt/ros/noetic/setup.bash
 set -euo pipefail
 
 INTERVAL_SEC="${INTERVAL_SEC:-3}"
+ONCE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) ONCE=1; shift ;;
+    -h|--help)
+      echo "Usage: $0 [--once]"
+      exit 0
+      ;;
+    *) echo "Unknown arg: $1"; exit 1 ;;
+  esac
+done
+
 TOPICS=(
   "/cam_L/color/image_raw"
   "/cam_L/aligned_depth_to_color/image_raw"
@@ -76,6 +93,21 @@ while true; do
     echo "[OK] All 6 camera topics and audio are active."
   fi
 
+  if [[ "$ONCE" -eq 1 ]]; then
+    # Partial cameras are normal (e.g. calib starts only --left). Fail only if none.
+    camera_present=0
+    for topic in "${present[@]}"; do
+      if [[ "$topic" != "$AUDIO_TOPIC" ]]; then
+        camera_present=1
+        break
+      fi
+    done
+    if [[ "$camera_present" -eq 0 ]]; then
+      echo "[ERROR] No camera topics responded."
+      exit 1
+    fi
+    exit 0
+  fi
   echo "[INFO] Rechecking in ${INTERVAL_SEC}s. Press Ctrl+C to stop."
   sleep "$INTERVAL_SEC"
 done

@@ -10,6 +10,12 @@ CAMERA_TOPICS = {
     "R": "/cam_R/points",
 }
 
+CAMERA_IMAGE_TOPICS = {
+    "L": "/cam_L/color/image_raw",
+    "M": "/cam_M/color/image_raw",
+    "R": "/cam_R/color/image_raw",
+}
+
 CAMERA_FRAMES = {
     "L": "cam_L_color_optical_frame",
     "M": "cam_M_color_optical_frame",
@@ -50,12 +56,28 @@ def _pointcloud_display(name, topic, use_flat_color=False):
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
-      Size (Pixels): 4
+      Size (Pixels): 5
       Size (m): 0.02
       Style: Points
       Topic: {topic}
       Unreliable: false
       Use Fixed Frame: true
+      Value: true"""
+
+
+def _image_display(name, topic):
+    """2D RealSense RGB so the camera video is visible (not only the point cloud)."""
+    return f"""    - Class: rviz/Image
+      Enabled: true
+      Image Topic: {topic}
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: cam_{name}_image
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
       Value: true"""
 
 
@@ -100,6 +122,7 @@ def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=
     use_flat_color = False
     for cam in cameras:
         displays.append(_pointcloud_display(cam, CAMERA_TOPICS[cam], use_flat_color))
+        displays.append(_image_display(cam, CAMERA_IMAGE_TOPICS[cam]))
 
     if show_markers:
         displays.append("""    - Class: rviz/MarkerArray
@@ -112,8 +135,25 @@ def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=
     expanded = ["        - /Global Options1", "        - /Grid1"]
     for cam in cameras:
         expanded.append(f"        - /cam_{cam}1")
+        expanded.append(f"        - /cam_{cam}_image1")
     if show_markers:
         expanded.append("        - /CalibrationMarkers1")
+
+    # Image panel(s) so RGB video is on-screen without hunting Displays
+    image_panels = []
+    for i, cam in enumerate(cameras):
+        image_panels.append(
+            f"""  - Class: rviz/Image
+    Name: cam_{cam} RGB
+    Topic: {CAMERA_IMAGE_TOPICS[cam]}
+    Transport Hint: raw
+    Unreliable: false
+    Window Geometry:
+      X: 800
+      Y: {50 + i * 420}
+      Width: 640
+      Height: 400"""
+        )
 
     body = f"""Panels:
   - Class: rviz/Displays
@@ -130,6 +170,7 @@ def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=
     Expanded:
       - /Current View1
     Name: Views
+{chr(10).join(image_panels)}
 Visualization Manager:
   Class: ""
   Displays:
@@ -151,17 +192,22 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 4.0
+      Distance: 3.0
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0.5
+        X: 0.3
+        Y: 0.0
+        Z: 0.4
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 0.785
+      Pitch: 0.6
       Target Frame: <Fixed Frame>
-      Yaw: 0.785
+      Yaw: 0.9
     Saved: ~
+Window Geometry:
+  Height: 1000
+  Width: 1600
+  X: 40
+  Y: 40
 Preferences:
   PromptSaveOnExit: false
 """

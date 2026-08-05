@@ -21,6 +21,13 @@ password: `robotlearning2`
   If output is "Not mounted":
          Run: `sudo mount -t nfs 192.168.253.1:/volume1/tuli ~/synology-tuli` (password: robotlearning2 )
 4. Perform calibration by following [the calibration guide](docs/calibration.md)
+
+   **Optional guided helper** (fills in names, organizes Qualisys dumps, prints the rest of the commands):
+   ```bash
+   cd ~/infants
+   ./infants/scripts/guided_calibration_capture.sh
+   ```
+   After Windows transfer to `calibration_data/from_windows/` (separate from Linux bags), it runs `organize_calibration_session.py`. Manual docs flow is unchanged.
 5. `cd ~/infants/`
 6. `arecord -l` Check what card # does "USB Audio" shows and ensure rs_cam.launch has that.
 7. Launch the cameras: `./infants/scripts/start_all.sh`
