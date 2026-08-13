@@ -28,6 +28,9 @@ trap cleanup INT TERM
 # Allow roslaunch to bring up roscore and nodes.
 sleep 6
 
+# Live cameras use wall-clock time; clear leftover from bag viz launches.
+rosparam set /use_sim_time false || true
+
 deadline=$((SECONDS + 120))
 while (( SECONDS < deadline )); do
   missing=()

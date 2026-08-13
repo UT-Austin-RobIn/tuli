@@ -60,7 +60,7 @@ source ~/envs/infants/bin/activate
 
 Use the following naming convention for this calibration data collection session:
 ```bash
-{yy_mm_dd_infant_XXX} e.g. 26_05_09_infant_010
+{yy_mm_dd_XXX} e.g. 26_05_09_010
 ```
 
 
@@ -95,10 +95,10 @@ If not, contact Arpit or Daniel.
 In a new terminal on linux:
 
 ```bash
-python infants/scripts/record_for_calibration.py --left_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --left_to_qualisys --folder_name {yy_mm_dd_XXX}
 ```
 
-Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_infant_XXX_left_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
+Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_XXX_left_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
 
 Then stop:
 - the Qualisys recording by pressing the red button
@@ -153,10 +153,10 @@ If not, contact Arpit or Daniel.
 In a new terminal:
 
 ```bash
-python infants/scripts/record_for_calibration.py --right_to_qualisys --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --right_to_qualisys --folder_name {yy_mm_dd_XXX}
 ```
 
-Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_infant_XXX_right_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
+Immediately start recording on the Qualisys side. Set the recording name as `yy_mm_dd_XXX_right_to_qualisys`. Perform the calibration data collection process for approximately 1 minute.
 
 Then stop:
 - the Qualisys recording by pressing the red button
@@ -213,7 +213,7 @@ If not, contact Arpit or Daniel.
 In a new terminal:
 
 ```bash
-python infants/scripts/record_for_calibration.py --left_to_mid --folder_name {yy_mm_dd_infant_XXX}
+python infants/scripts/record_for_calibration.py --left_to_mid --folder_name {yy_mm_dd_XXX}
 ```
 
 Perform the calibration data collection procedure.
@@ -222,58 +222,38 @@ Perform the calibration data collection procedure.
 
 # 6. Transfer Files to the Linux Machine
 
-## Guided / short-name transfer (recommended with the helper)
-
-Linux bags live under `~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/`.
-Copy Qualisys files to a **different** folder so they cannot overwrite bags:
-
-```powershell
-cd "C:\Users\UT Austin\Documents\Qualisys0326\Data"
-scp -r ".\yy_mm_dd_infant_XXX" robotlearning2@192.168.253.201:~/infants/data/calibration_data/from_windows/
-```
-
-That creates `~/infants/data/calibration_data/from_windows/yy_mm_dd_infant_XXX/`.
-
-Then organize (moves AVI/TSV/qca into the Linux session; never touches `ros.bag`):
-
-```bash
-cd ~/infants
-source ~/envs/infants/bin/activate
-python infants/scripts/organize_calibration_session.py --folder {yy_mm_dd_infant_XXX}
-```
-
-## Manual / long-name transfer (legacy)
+Skip this section if you used `guided_calibration_capture.sh` — it already copies Qualisys files to `from_windows/` and runs `organize_calibration_session.py`.
 
 Open Windows PowerShell and run:
 
 ```bash
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/left_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/left_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/left_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/left_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_XXX}/right_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/right_to_qualisys/
 
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_infant_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/right_to_qualisys/
+scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/right_to_qualisys/
 
-scp windows:D:/Roberto_project/{XXX}/{yy_mm_dd_infant_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_infant_00X}/
+scp windows:D:/Roberto_project/{XXX}/{yy_mm_dd_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/
 ```
 
-So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_infant_00X}` folder:
+So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_XXX}` folder:
 1. `left_to_qualisys/ros.bag`
 2. `right_to_qualisys/ros.bag`
 3. `left_to_mid/ros.bag`
-4. `left_to_qualisys/{yy_mm_dd_infant_XXX}_left_to_qualisys_Miqus_1_31039.avi`
-5. `right_to_qualisys/{yy_mm_dd_infant_XXX}_right_to_qualisys_Miqus_10_31041.avi`
-6. `left_to_qualisys/{yy_mm_dd_infant_XXX}_left_to_qualisys.tsv`
-7. `right_to_qualisys/{yy_mm_dd_infant_XXX}_right_to_qualisys.tsv`
-8. `{yy_mm_dd_infant_XXX}_mocap_calibration.txt`
+4. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi`
+5. `right_to_qualisys/{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi`
+6. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys.tsv`
+7. `right_to_qualisys/{yy_mm_dd_XXX}_right_to_qualisys.tsv`
+8. `{yy_mm_dd_XXX}_mocap_calibration.txt`
 
 
 # 7. Preparing images for calibration
 ```bash
-python infants/scripts/prepare_calibration_images.py --folder_name {folder_name} --type left_to_qualisys  #  26_06_09_infant_014
-python infants/scripts/prepare_calibration_images.py --folder_name {folder_name}  --type right_to_qualisys #  26_06_09_infant_014
-python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_infant_014
+python infants/scripts/prepare_calibration_images.py --folder_name {folder_name} --type left_to_qualisys  #  26_06_09_014
+python infants/scripts/prepare_calibration_images.py --folder_name {folder_name}  --type right_to_qualisys #  26_06_09_014
+python infants/scripts/prepare_calibration_image_rs.py --folder_name {folder_name}  #  26_06_09_014
 ```
 
 # 8. Run calibration
@@ -292,5 +272,5 @@ python examples/perform_calibration.py --data-path /home/robotlearning2/infants/
 ```bash
 cd ~/infants
 source ~/envs/infants/bin/activate
-python infants/scripts/export_calibration_config.py --folder 26_06_29_infant_017
+python infants/scripts/export_calibration_config.py --folder 26_06_29_017
 ```

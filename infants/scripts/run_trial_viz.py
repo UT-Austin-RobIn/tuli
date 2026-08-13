@@ -78,6 +78,24 @@ def stop_proc(proc, name, timeout=5):
         proc.wait()
 
 
+def restore_wall_clock_time():
+    """Clear /use_sim_time so later live recording uses wall clock."""
+    try:
+        result = subprocess.run(
+            ["rosparam", "set", "/use_sim_time", "false"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            print("[INFO] Restored /use_sim_time=false")
+        else:
+            err = (result.stderr or result.stdout or "").strip()
+            print(f"[WARN] Could not restore /use_sim_time: {err or 'rosparam failed'}")
+    except Exception as exc:
+        print(f"[WARN] Could not restore /use_sim_time: {exc}")
+
+
 def extract_bag_audio_mp3(bag_path: Path, topic: str = "/audio/audio"):
     """Return concatenated MP3 bytes from bag, or None if missing."""
     try:
@@ -387,6 +405,7 @@ def main():
             if record_path.is_file():
                 print(f"[record] Saved {record_path}")
         rviz_path.unlink(missing_ok=True)
+        restore_wall_clock_time()
 
 
 if __name__ == "__main__":
