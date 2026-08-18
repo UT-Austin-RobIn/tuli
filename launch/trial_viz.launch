@@ -10,17 +10,21 @@
   <arg name="show_cam_M" default="false"/>
   <arg name="show_cam_R" default="false"/>
   <arg name="show_markers" default="false"/>
+  <arg name="max_markers" default="0"/>
   <arg name="show_calib_tf" default="false"/>
   <arg name="use_mcr_frame" default="false"/>
   <arg name="debug_layout" default="false"/>
   <arg name="calib_config" default=""/>
+  <arg name="animate_orbit" default="true"/>
+  <arg name="orbit_period" default="60.0"/>
+  <arg name="look_depth" default="1.2"/>
 
   <param name="/use_sim_time" value="true"/>
 
   <!-- Point cloud publishers (launch-prefix must not use bash -c or __name:= remaps are dropped) -->
   <node if="$(arg show_cam_L)" name="depth_to_pointcloud_L"
         pkg="rosout" type="rosout" output="screen"
-        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_depth_to_pointcloud.sh">
     <param name="color_topic" value="/cam_L/color/image_raw"/>
     <param name="depth_topic" value="/cam_L/aligned_depth_to_color/image_raw"/>
     <param name="camera_info_topic" value="/cam_L/color/camera_info"/>
@@ -30,7 +34,7 @@
 
   <node if="$(arg show_cam_M)" name="depth_to_pointcloud_M"
         pkg="rosout" type="rosout" output="screen"
-        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_depth_to_pointcloud.sh">
     <param name="color_topic" value="/cam_M/color/image_raw"/>
     <param name="depth_topic" value="/cam_M/aligned_depth_to_color/image_raw"/>
     <param name="camera_info_topic" value="/cam_M/color/camera_info"/>
@@ -40,7 +44,7 @@
 
   <node if="$(arg show_cam_R)" name="depth_to_pointcloud_R"
         pkg="rosout" type="rosout" output="screen"
-        launch-prefix="$(env HOME)/infants/infants/scripts/run_depth_to_pointcloud.sh">
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_depth_to_pointcloud.sh">
     <param name="color_topic" value="/cam_R/color/image_raw"/>
     <param name="depth_topic" value="/cam_R/aligned_depth_to_color/image_raw"/>
     <param name="camera_info_topic" value="/cam_R/color/camera_info"/>
@@ -51,7 +55,7 @@
   <!-- Align clouds in qualisys_mcR or across camera frames -->
   <node if="$(arg show_calib_tf)" name="calib_tf_broadcaster"
         pkg="rosout" type="rosout" output="screen"
-        launch-prefix="$(env HOME)/infants/infants/scripts/run_calib_tf_broadcaster.sh">
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_calib_tf_broadcaster.sh">
     <param name="config" value="$(arg calib_config)"/>
     <param name="cameras" value="$(arg cameras)"/>
     <param name="fixed_camera" value="$(arg fixed_camera)"/>
@@ -62,14 +66,27 @@
   <!-- Optional marker overlay (published in qualisys_mcR when use_mcr_frame) -->
   <node if="$(arg show_markers)" name="marker_transformer"
         pkg="rosout" type="rosout" output="screen"
-        launch-prefix="$(env HOME)/infants/infants/scripts/run_marker_transformer.sh">
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_marker_transformer.sh">
     <param name="config" value="$(arg calib_config)"/>
     <param name="cameras" value="$(arg cameras)"/>
+    <param name="max_markers" value="$(arg max_markers)"/>
+    <param name="bag_file" value="$(arg bag_file)"/>
     <param name="reference_frame" value="qualisys_mcR" if="$(arg use_mcr_frame)"/>
     <param name="reference_frame" value="cameras" unless="$(arg use_mcr_frame)"/>
   </node>
 
-  <!-- Rosbag playback -->
+  <!-- Slow circular orbit camera TF for RViz FrameAligned view -->
+  <node if="$(arg animate_orbit)" name="orbit_cam_broadcaster"
+        pkg="rosout" type="rosout" output="screen"
+        launch-prefix="$(env HOME)/infants/infants/scripts/viz/run_orbit_cam_broadcaster.sh">
+    <param name="config" value="$(arg calib_config)"/>
+    <param name="cameras" value="$(arg cameras)"/>
+    <param name="look_depth" value="$(arg look_depth)"/>
+    <param name="period" value="$(arg orbit_period)"/>
+    <param name="parent_frame" value="qualisys_mcR"/>
+  </node>
+
+  <!-- Rosbag playback (markers read from bag by marker_transformer, not via 700 subscribers). -->
   <node pkg="rosbag" type="play" name="bag_player"
         args="--clock --loop --delay=$(arg bag_delay) $(arg bag_file)"
         if="$(arg loop_bag)"
@@ -79,8 +96,9 @@
         unless="$(arg loop_bag)"
         required="false"/>
 
-  <!-- RViz -->
+  <!-- RViz: fullscreen for clean recordings.
+       When not looping, required=false so run_trial_viz.py can SIGINT after bag+pad. -->
   <node pkg="rviz" type="rviz" name="rviz"
-        args="-d $(arg rviz_config)"
-        required="true"/>
+        args="-d $(arg rviz_config) --fullscreen"
+        required="$(arg loop_bag)"/>
 </launch>

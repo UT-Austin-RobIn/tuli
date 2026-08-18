@@ -43,11 +43,13 @@ fi
 
 echo "[INFO] Recording display $DISPLAY_ID at ${DIMENSIONS}, ${FPS} FPS"
 echo "[INFO] Output: $OUTPUT_PATH"
-echo "[INFO] Press Ctrl+C to stop recording."
+echo "[INFO] SIGINT stops recording (the batch runner sends this)."
 
+# -nostdin: don't steal the batch runner's terminal; SIGINT still finalizes the MP4.
 ffmpeg \
   -y \
-  -loglevel info \
+  -nostdin \
+  -loglevel warning \
   -f x11grab \
   -video_size "$DIMENSIONS" \
   -framerate "$FPS" \

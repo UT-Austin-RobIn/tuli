@@ -22,16 +22,18 @@ password: `robotlearning2`
          Run: `sudo mount -t nfs 192.168.253.1:/volume1/tuli ~/synology-tuli` (password: robotlearning2 )
 4. Perform calibration by following [the calibration guide](docs/calibration.md)
 
-   **Optional guided helper** (fills in names, organizes Qualisys dumps, prints the rest of the commands):
-   ```bash
-   cd ~/infants
-   ./infants/scripts/guided_calibration_capture.sh
-   ```
-   After Windows transfer to `calibration_data/from_windows/` (separate from Linux bags), it runs `organize_calibration_session.py`. Manual docs flow is unchanged.
-5. `cd ~/infants/`
-6. `arecord -l` Check what card # does "USB Audio" shows and ensure rs_cam.launch has that.
-7. Launch the cameras: `./infants/scripts/start_all.sh`
-8. Verify that they start with `./infants/scripts/check_cams.sh`
+
+## Running Trials
+
+1. Note: change settings on Qualisys as follows:
+- Resolution: 1080p
+- Aspect Ratio: 16:9
+- FPS: `25 Hz`
+
+2. `cd ~/infants/`
+3. [Optional] `arecord -l` Check what card # does "USB Audio" shows and ensure rs_cam.launch has that.
+4. Launch the cameras: `./infants/scripts/start_all.sh`
+5. Verify that they start with `./infants/scripts/check_cams.sh`
 You should see all 6 camera topics (color image raw and aligned depth image raw for cameras L, M, R) and audio!
 ```bash
                  topic                     rate   min_delta   max_delta   std_dev    window
@@ -44,33 +46,20 @@ You should see all 6 camera topics (color image raw and aligned depth image raw 
 /cam_R/aligned_depth_to_color/image_raw   29.99   0.02894     0.039       0.001779   141   
 /audio/audio                              38.28   0.01948     0.0305      0.003658   141   
 ``` 
-
-## Running Trials
-
-1. Activate the virtualenv, `source ~/envs/infants/bin/activate` 
-2. Run the experiment script: `python infants/experiment/experiment_driver.py`
-3. It will prompt for `subject ID`, `task name`, and `condition ID`. 
+6. Activate the virtualenv, `source ~/envs/infants/bin/activate` 
+7. Run the experiment script: `python infants/experiment/experiment_driver.py`
+8. It will prompt for `subject ID`, `task name`, and `condition ID`. 
 Make sure the subject ID 3 digits. Example (1) write 001 for (2) write 002
 Subject ID should be an integer. Task should be in `[bang, slide, hammer]`.  
-`TODO change this`
-    Condition numbers: 
-    1. Soft Board - Headphones		(low haptics,  low audio )
-    2. Soft Board - No Headphones 		(low haptics,  high audio)
-    3. Hard Board - Headphones 		(high haptics, low audio )
-    4. Hard Board - No Headphones 		(high haptics, high audio)
-    5. Wash Board - Headphones 		(high haptics, low audio )
-    6. Wash Board - No Headphones 		(high haptics, high audio)
-    7. Soft Board and Button - Headphones 	(high haptics, low audio )
-    8. Soft Board and Button - No Headphones 	(high haptics, high audio)
 
-4. Press SPACEBAR to start recording that trial.
-5. Start recording on Qualisys side. Choose appropriate name
-6. When done, stop Qualisys recording
-7. Press SPACEBAR to stop recording on linux
-8. Say `[y/n]` to keep trial or delete.
+9. Press SPACEBAR to start recording that trial.
+10. Start recording on Qualisys side. Choose appropriate name
+11. When done, stop Qualisys recording
+12. Press SPACEBAR to stop recording on linux
+13. Say `[y/n]` to keep trial or delete.
 
 
-Once the entire session for an infant is finished, and Mark has transferred all the mocap data to "Roberto project", run the following script to transfer the data from windows to NAS  
+<!-- Once the entire session for an infant is finished, and Mark has transferred all the mocap data to "Roberto project", run the following script to transfer the data from windows to NAS  
 ```bash
 python infants/scripts/transfer_windows_to_nas.py \
   'D:\Roberto_project\{014}' \
@@ -79,59 +68,63 @@ python infants/scripts/transfer_windows_to_nas.py \
   --user "ut austin" \
   --nas-root ~/synology-tuli
 # Change the values in {}
-```
+``` -->
 
 ## Visualizing Data
 
-`TODO: Daniel add exact instructions here`
-1. Annotate the mocap markers (Optional)
-2. Transfer the 3 RGB camera videos and the tsv file to the data folder which has ros bags on synology
+1. Transfer Qualisys trial files (C3D, TSV, Miqus AVIs) into each `trial_*` folder:
 ```bash
-scp windows:D:/Roberto_project/015/26_06_24_infant_015_2.tsv /home/robotlearning2/infants/data/2026-06-24_09-40-52/trial_002/
-
-scp windows:D:/Roberto_project/015/26_06_29_infant_017_1.c3d /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/
-
-```
-3. Put marker data into rosbag
-```bash
-  python infants/scripts/process_marker_c3d.py   \
-  --file_path /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/26_06_29_017_1.c3d \
-  --tsv /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/26_06_29_017_1.tsv \
-  --num-markers 1 \
-  --camera-bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros.bag
+python infants/scripts/organize_trial_session.py \
+  --session 2026-08-18_16-10-10 \
+  --infant 050
 ```
 
-4. Visualize on RealSense RGB image (markers overlaid)
+2. Put marker data into rosbag
+```bash
+python infants/scripts/process_marker_c3d.py \
+  data/2026-08-18_16-10-10/trial_001
+# optional: --num-markers 500
+```
+
+4. Visualize on Mocap RGB video (markers overlaid)
+```bash
+python infants/scripts/viz/overlay_miqus_markers.py \
+  --trial-dir data/2026-08-18_16-10-10/trial_001 \
+  --calibration-dir data/calibration_data/26_08_18_050
+```
+
+5. Visualize on RealSense RGB video (markers overlaid)
 
 Basic (no audio, OpenCV window only):
 ```bash
-python infants/scripts/overlay_markers_on_image.py \
-  --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
-  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
-  --camera L
+python infants/scripts/viz/overlay_realsense_markers.py \
+  --trial-dir data/2026-08-18_16-10-10/trial_001 \
+  --calibration-dir data/calibration_data/26_08_18_050 \
+  --camera L \
+  --save-mp4
 ```
 
 Optional flags:
 - `--audio` — play bag `/audio/audio` while showing frames (paced to bag time)
-- `--save-mp4` — write `<bag_stem>_overlay_<L|M|R>.mp4` next to the bag (includes audio if present)
+- `--save-mp4` — write `visualizations/realsense/realsense_marker_overlay_<L|M|R>.mp4` (includes audio if present)
 - `--output /path/to/out.mp4` — custom MP4 path (same as `--save-mp4` but choose the name)
 - `--no-display` — skip the OpenCV window (useful with `--save-mp4` only)
 
 Example with audio + MP4 export:
 ```bash
-python infants/scripts/overlay_markers_on_image.py \
-  --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
-  --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml \
+python infants/scripts/viz/overlay_realsense_markers.py \
+  --trial-dir data/2026-06-29_15-03-28/trial_001 \
+  --calibration-dir data/calibration_data/26_06_29_infant_017 \
   --camera L \
   --audio \
   --save-mp4
 ```
 
-5. Visualize in RViz (point clouds ± markers)
+6. Visualize in RViz (point clouds ± markers)
 
 Basic:
 ```bash
-python infants/scripts/run_trial_viz.py \
+python infants/scripts/viz/run_trial_viz.py \
   --bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
   --cameras L \
   --markers \
@@ -141,7 +134,7 @@ python infants/scripts/run_trial_viz.py \
 Add `--audio` to also start `audio_play` so bag audio plays with RViz (same bag must contain `/audio/audio`).
 Add `--record` to capture the screen (RViz + your view moves) via `record_rviz_screen.sh`:
 ```bash
-python infants/scripts/run_trial_viz.py \
+python infants/scripts/viz/run_trial_viz.py \
   --bag /home/robotlearning2/infants/data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \
   --cameras L \
   --markers \
@@ -167,10 +160,10 @@ rosbag play --clock /path/to/trial_ros.bag
 ---
 Old 
 
-1. RViz + rosbag playback:
-  `roslaunch launch/visualize_data.launch bag_file:=/absolute/path/to/trial_ros.bag`
+1. RViz + rosbag playback (restores wall time on exit / Ctrl+C):
+  `./infants/scripts/viz/roslaunch_restore_wall_time.sh launch/visualize_data.launch bag_file:=/absolute/path/to/trial_ros.bag`
 2. Record RViz screen:
-  `./record_rviz_screen.sh /home/robotlearning2/infants/recordings/rviz_$(date +%Y%m%d_%H%M%S).mp4 "$DISPLAY"`
+  `./infants/scripts/viz/record_rviz_screen.sh /home/robotlearning2/infants/recordings/rviz_$(date +%Y%m%d_%H%M%S).mp4 "$DISPLAY"`
 3. Stop recording with `Ctrl+C`.
 
 `rqt_bag <path to bag>` and open a bagfile with the gui. This will show images but audio will not play properly.  
@@ -185,7 +178,8 @@ rosbag play <path to bag>
 
 
 ### Quicksheet for commands 
-To rsync data: `rsync -r --info=progress2 data /home/robotlearning2/synology-tuli/`  
+To rsync data:  
+`sudo rsync -avh --progress --no-owner --no-group --ignore-existing 2026-07-17_10-57-17 /home/robotlearning2/synology-tuli/`
 
 ### Synology Troubleshooting
 1. Make sure it is switched on (blue light should be visible on the big black box)

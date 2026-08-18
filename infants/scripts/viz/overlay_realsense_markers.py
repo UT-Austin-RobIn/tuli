@@ -8,19 +8,15 @@ Marker positions come from /marker_N topics in the bag (mm, Qualisys mcR).
 Intrinsics come from /cam_L/color/camera_info in the bag.
 
 Examples:
-  python infants/scripts/overlay_markers_on_image.py \\
-      --bag data/2026-06-29_15-03-28/trial_001/trial_ros_combined.bag \\
-      --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml
+  python infants/scripts/viz/overlay_realsense_markers.py \\
+      --trial-dir data/2026-06-29_15-03-28/trial_001 \\
+      --calibration-dir data/calibration_data/26_06_29_infant_017 \\
+      --camera L --save-mp4 --no-display
 
   # Live audio + write MP4 (overlay + bag audio):
-  python infants/scripts/overlay_markers_on_image.py \\
-      --bag .../trial_ros_combined.bag --calib-config ... \\
+  python infants/scripts/viz/overlay_realsense_markers.py \\
+      --trial-dir .../trial_001 --calibration-dir ... \\
       --audio --save-mp4
-
-  # Save frames instead of interactive playback:
-  python infants/scripts/overlay_markers_on_image.py \\
-      --bag .../trial_ros_combined.bag --calib-config ... \\
-      --save-dir /tmp/marker_overlay
 """
 from __future__ import annotations
 
@@ -39,11 +35,20 @@ import cv2
 import numpy as np
 import rosbag
 
+_VIZ_DIR = Path(__file__).resolve().parent
+_SCRIPTS_DIR = _VIZ_DIR.parent
+if str(_VIZ_DIR) not in sys.path:
+    sys.path.insert(0, str(_VIZ_DIR))
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
 from calibration_chain import (
     build_camera_transforms,
     load_config,
     resolve_config_path,
 )
+from export_calibration_config import DATA_ROOT as CALIB_DATA_ROOT
+from viz_layout import vis_dir
 
 CAMERA_NAMES = {
     "L": "cam_L",
@@ -61,6 +66,44 @@ MARKER_COLORS_BGR = [
 ]
 
 DEFAULT_AUDIO_TOPIC = "/audio/audio"
+
+
+def find_combined_bag(trial_dir: Path) -> Path:
+    for name in ("trial_ros_combined.bag", "trial_ros.bag"):
+        p = trial_dir / name
+        if p.is_file():
+            return p
+    bags = sorted(trial_dir.glob("*.bag"))
+    if not bags:
+        raise SystemExit(f"No .bag in {trial_dir}")
+    return bags[0]
+
+
+def resolve_calibration_dir(value: Path) -> Path:
+    path = value.expanduser()
+    candidates = []
+    if not path.is_absolute():
+        candidates.append(CALIB_DATA_ROOT / path)
+        candidates.append(path)
+    else:
+        candidates.append(path)
+    for cand in candidates:
+        if cand.is_dir():
+            return cand.resolve()
+    raise SystemExit(f"Calibration folder not found: {value}")
+
+
+def find_calib_yaml(calib_dir: Path) -> Path:
+    preferred = calib_dir / "calibration_markers.yaml"
+    if preferred.is_file():
+        return preferred
+    yamls = sorted(calib_dir.glob("*.yaml"))
+    if len(yamls) == 1:
+        return yamls[0]
+    raise SystemExit(
+        f"No calibration_markers.yaml in {calib_dir}"
+        + (f" (found: {', '.join(p.name for p in yamls)})" if yamls else "")
+    )
 
 
 def imgmsg_to_bgr8(msg):
@@ -121,26 +164,43 @@ def load_intrinsics_from_bag(bag, camera_name):
     raise ValueError(f"No CameraInfo on {info_topic}")
 
 
-def load_bag_streams(bag, camera_name, num_markers):
-    """Read camera images and marker topics in a single bag pass."""
+def bag_marker_count(bag) -> int:
+    """Highest /marker_N index present in the bag (0 if none)."""
+    ids = []
+    for topic in bag.get_type_and_topic_info().topics:
+        if not topic.startswith("/marker_"):
+            continue
+        suffix = topic[len("/marker_") :]
+        if suffix.isdigit():
+            ids.append(int(suffix))
+    return max(ids) if ids else 0
+
+
+def load_bag_streams(bag, camera_name, num_markers: Optional[int] = None):
+    """Read camera images and marker topics in a single bag pass.
+
+    num_markers=None uses every /marker_N topic in the bag.
+    """
     color_topic = f"/{camera_name}/color/image_raw"
     info_topic = f"/{camera_name}/color/camera_info"
+    discovered = bag_marker_count(bag)
+    if num_markers is None:
+        num_markers = discovered
+    elif discovered:
+        num_markers = min(num_markers, discovered)
     marker_topics = {f"/marker_{m}" for m in range(1, num_markers + 1)}
-    topics = [color_topic, info_topic, "/metadata/num_markers", *sorted(marker_topics)]
+    topics = [color_topic, info_topic, *sorted(marker_topics)]
 
     color_times = []
     color_msgs = []
     marker_streams = defaultdict(lambda: ([], []))
     K = None
     dist = None
-    bag_num_markers = None
 
     for topic, msg, t in bag.read_messages(topics=topics):
         if topic == info_topic and K is None:
             K = np.array(msg.K, dtype=np.float64).reshape(3, 3)
             dist = np.array(msg.D, dtype=np.float64) if msg.D else None
-        elif topic == "/metadata/num_markers":
-            bag_num_markers = int(msg.data)
         elif topic == color_topic:
             color_times.append(t.to_sec())
             color_msgs.append(msg)
@@ -158,13 +218,11 @@ def load_bag_streams(bag, camera_name, num_markers):
             "Use a combined bag from process_marker_c3d.py or process_marker_tsv.py."
         )
 
-    effective_markers = bag_num_markers or len(marker_streams)
-    effective_markers = min(effective_markers, num_markers)
     marker_streams = {
         k: v for k, v in sorted(marker_streams.items())
-        if int(k.rsplit("_", 1)[-1]) <= effective_markers
+        if int(k.rsplit("_", 1)[-1]) <= num_markers
     }
-    return K, dist, color_times, color_msgs, marker_streams, effective_markers
+    return K, dist, color_times, color_msgs, marker_streams, num_markers
 
 
 def require_ffmpeg():
@@ -242,12 +300,12 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Overlay Qualisys markers on RealSense color images."
     )
-    parser.add_argument("--bag", type=Path, required=True, help="Trial or combined rosbag")
+    parser.add_argument("--trial-dir", type=Path, required=True, help="Trial folder")
     parser.add_argument(
-        "--calib-config",
+        "--calibration-dir",
         type=Path,
         required=True,
-        help="calibration_markers.yaml (stereo + T_mc_wrt_mcR for cam_L)",
+        help="Calibration session folder (calibration_markers.yaml is found inside it)",
     )
     parser.add_argument(
         "--camera",
@@ -258,7 +316,7 @@ def parse_args():
     parser.add_argument(
         "--num-markers",
         type=int,
-        help="Override num_markers from calib YAML (default: YAML, capped by bag)",
+        help="Draw only the first N markers (default: all /marker_N topics in the bag)",
     )
     parser.add_argument(
         "--max-time-diff",
@@ -301,7 +359,7 @@ def parse_args():
     parser.add_argument(
         "--save-mp4",
         action="store_true",
-        help="Write overlay MP4 next to the bag (<bag_stem>_overlay_<cam>.mp4)",
+        help="Write visualizations/realsense/realsense_marker_overlay_<L|M|R>.mp4",
     )
     parser.add_argument(
         "--output",
@@ -318,13 +376,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    bag_path = args.bag.expanduser().resolve()
-    if not bag_path.is_file():
-        raise SystemExit(f"Bag not found: {bag_path}")
+    trial_dir = args.trial_dir.expanduser().resolve()
+    if not trial_dir.is_dir():
+        raise SystemExit(f"Trial dir not found: {trial_dir}")
 
-    config_path = resolve_config_path(args.calib_config)
+    bag_path = find_combined_bag(trial_dir)
+    calib_dir = resolve_calibration_dir(args.calibration_dir)
+    config_path = resolve_config_path(find_calib_yaml(calib_dir))
     config = load_config(config_path)
-    num_markers = args.num_markers or int(config.get("num_markers", 1))
     cam_key = args.camera
     cam_name = CAMERA_NAMES[cam_key]
 
@@ -339,14 +398,14 @@ def main():
     print(f"Reading bag (single pass): {bag_path}", flush=True)
     with rosbag.Bag(str(bag_path)) as bag:
         K, dist, color_times, color_msgs, marker_streams, num_markers = load_bag_streams(
-            bag, cam_name, num_markers
+            bag, cam_name, args.num_markers
         )
 
     output_path = None
     if args.output:
         output_path = args.output.expanduser().resolve()
     elif args.save_mp4:
-        output_path = bag_path.parent / f"{bag_path.stem}_overlay_{cam_key}.mp4"
+        output_path = vis_dir(bag_path.parent, "realsense") / f"realsense_marker_overlay_{cam_key}.mp4"
 
     # Continuous timeline when audio or MP4 export is on; classic mode skips empty frames.
     continuous = bool(args.audio or output_path is not None)

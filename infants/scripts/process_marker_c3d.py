@@ -8,20 +8,15 @@ it usually does not embed wall-clock start time — pass --tsv (recommended),
 Requires: pip install c3d
 
 Examples:
+  # Typical: resolve C3D, TSV, and trial_ros.bag inside the trial folder
+  python infants/scripts/process_marker_c3d.py data/2026-06-29_15-03-28/trial_001
+  python infants/scripts/process_marker_c3d.py data/.../trial_001 --num-markers 500
+
   # Inspect structure (labels, rate, units, frame count):
-  python infants/scripts/process_marker_c3d.py --file_path trial.c3d --inspect
-
-  # Marker bag using wall-clock start from a Qualisys TSV export of the same trial:
-  python infants/scripts/process_marker_c3d.py \\
-      --file_path trial.c3d \\
-      --tsv trial.tsv
-
-  # C3D + trial_ros.bag -> combined bag for run_trial_viz.py --markers:
-  python infants/scripts/process_marker_c3d.py \\
-      --file_path trial.c3d \\
-      --tsv trial.tsv \\
-      --camera-bag data/.../trial_001/trial_ros.bag
+  python infants/scripts/process_marker_c3d.py data/.../trial_001 --inspect
 """
+from __future__ import annotations
+
 import argparse
 import sys
 from datetime import datetime
@@ -49,6 +44,40 @@ from process_marker_tsv import (
 
 DEFAULT_TZ = "America/Chicago"
 UNUSED_LABELS = {"", "*", "undefined"}
+
+
+def pick_unique_file(paths, kind, trial_dir):
+    paths = sorted(paths)
+    if not paths:
+        raise SystemExit(f"No {kind} found in {trial_dir}")
+    if len(paths) > 1:
+        print(
+            f"[WARN] Multiple {kind} files in {trial_dir}; using {paths[0].name}",
+            file=sys.stderr,
+        )
+    return paths[0]
+
+
+def resolve_trial_inputs(trial_dir: Path) -> tuple[Path, Path, Path]:
+    """Find C3D, TSV, and trial_ros.bag inside a trial folder."""
+    trial_dir = trial_dir.expanduser().resolve()
+    if not trial_dir.is_dir():
+        raise SystemExit(f"Trial folder not found: {trial_dir}")
+
+    c3d_path = pick_unique_file(trial_dir.glob("*.c3d"), ".c3d", trial_dir)
+    tsv_cands = [
+        p
+        for p in trial_dir.glob("*.tsv")
+        if "qualisys" not in p.name.lower()
+    ]
+    if not tsv_cands:
+        tsv_cands = list(trial_dir.glob("*.tsv"))
+    tsv_path = pick_unique_file(tsv_cands, ".tsv", trial_dir)
+
+    bag = trial_dir / "trial_ros.bag"
+    if not bag.is_file():
+        raise SystemExit(f"No trial_ros.bag in {trial_dir}")
+    return c3d_path, tsv_path, bag
 
 
 def _param_float(reader, key, default=None):
@@ -244,9 +273,20 @@ def parse_args():
         description="Convert Qualisys C3D to marker rosbag; optionally merge with trial bag."
     )
     parser.add_argument(
+        "trial_dir",
+        nargs="?",
+        type=Path,
+        help="Trial folder containing the C3D, TSV, and trial_ros.bag",
+    )
+    parser.add_argument(
+        "--trial-dir",
+        dest="trial_dir_opt",
+        type=Path,
+        help="Same as positional trial folder",
+    )
+    parser.add_argument(
         "--file_path",
-        required=True,
-        help="Path to Qualisys marker C3D file",
+        help="Path to Qualisys marker C3D file (default: the .c3d in --trial-dir)",
     )
     parser.add_argument(
         "--inspect",
@@ -256,7 +296,7 @@ def parse_args():
     parser.add_argument(
         "--tsv",
         type=Path,
-        help="Qualisys TSV export of the same trial; wall-clock start read from header",
+        help="Qualisys TSV export (default: the .tsv in --trial-dir)",
     )
     parser.add_argument(
         "--start-time",
@@ -282,7 +322,7 @@ def parse_args():
     parser.add_argument(
         "--camera-bag",
         type=Path,
-        help="Trial camera rosbag (e.g. trial_ros.bag). If set, writes a combined bag.",
+        help="Trial camera rosbag (default: trial_ros.bag in --trial-dir)",
     )
     parser.add_argument(
         "--marker-bag",
@@ -304,20 +344,42 @@ def parse_args():
     parser.add_argument(
         "--keep-marker-bag",
         action="store_true",
-        default=True,
-        help="Keep the intermediate marker bag after merging (default: true)",
+        default=False,
+        help="Keep the intermediate marker bag after merging (default: delete it)",
     )
     parser.add_argument(
         "--no-keep-marker-bag",
         dest="keep_marker_bag",
         action="store_false",
-        help="Delete intermediate marker bag after merging",
+        help="Delete intermediate marker bag after merging (default)",
     )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    trial_dir = args.trial_dir or args.trial_dir_opt
+    if trial_dir is not None:
+        c3d_path, tsv_path, camera_bag = resolve_trial_inputs(trial_dir)
+        if args.file_path is None:
+            args.file_path = c3d_path
+        if args.tsv is None and args.start_time is None and args.trial_metadata is None:
+            args.tsv = tsv_path
+        if args.camera_bag is None and not args.inspect:
+            args.camera_bag = camera_bag
+        print(f"[INFO] Trial:  {trial_dir.expanduser().resolve()}")
+        print(f"[INFO] C3D:    {args.file_path}")
+        if args.tsv:
+            print(f"[INFO] TSV:    {args.tsv}")
+        if args.camera_bag:
+            print(f"[INFO] Camera: {args.camera_bag}")
+
+    if args.file_path is None:
+        print(
+            "Error: pass a trial folder or --file_path.",
+            file=sys.stderr,
+        )
+        return 1
 
     if args.inspect:
         inspect_c3d(args.file_path)

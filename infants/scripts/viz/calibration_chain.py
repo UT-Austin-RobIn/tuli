@@ -99,21 +99,58 @@ def _can_build_transform(cam_cfg, transforms):
     return _has_mocap_anchor(cam_cfg)
 
 
+def _parent_key(cam_cfg):
+    """Return CAMERA_KEYS letter for cam_cfg['parent'], or None."""
+    if "parent" not in cam_cfg:
+        return None
+    parent_name = cam_cfg["parent"]
+    return next(k for k, v in CAMERA_KEYS.items() if v == parent_name)
+
+
+def _keys_with_parents(config, enabled_keys):
+    """Enabled cameras plus any parents needed to chain their transforms.
+
+    e.g. cameras=M alone still builds L first when cam_M.parent is cam_L.
+    """
+    cameras = config.get("cameras", {})
+    ordered = []
+    seen = set()
+
+    def add(cam_key):
+        if cam_key in seen or cam_key not in CAMERA_KEYS:
+            return
+        cam_name = CAMERA_KEYS[cam_key]
+        if cam_name not in cameras:
+            return
+        parent = _parent_key(cameras[cam_name])
+        if parent is not None:
+            add(parent)
+        seen.add(cam_key)
+        ordered.append(cam_key)
+
+    for cam_key in CAMERA_KEYS:
+        if cam_key in enabled_keys:
+            add(cam_key)
+    return ordered
+
+
 def build_camera_transforms(config, enabled_keys=None):
     """Return T_mcR_to_cam for each camera that has complete calibration data.
 
     Cameras with null stereo_R/T or null T_mc_wrt_mcR are skipped so partial YAML
     files (e.g. only cam_L calibrated) still work.
+
+    Parent cameras are always built when a child is enabled, even if the parent
+    itself is not in enabled_keys (needed for --cameras M alone).
     """
     transforms = {}
     frame_ids = {}
     colors = {}
 
-    keys = (
-        [k for k in CAMERA_KEYS if k in enabled_keys]
-        if enabled_keys is not None
-        else list(CAMERA_KEYS.keys())
-    )
+    if enabled_keys is not None:
+        keys = _keys_with_parents(config, enabled_keys)
+    else:
+        keys = _keys_with_parents(config, list(CAMERA_KEYS.keys()))
 
     for cam_key in keys:
         cam_name = CAMERA_KEYS[cam_key]
@@ -124,8 +161,7 @@ def build_camera_transforms(config, enabled_keys=None):
             continue
 
         if "parent" in cam_cfg:
-            parent_name = cam_cfg["parent"]
-            parent_key = next(k for k, v in CAMERA_KEYS.items() if v == parent_name)
+            parent_key = _parent_key(cam_cfg)
             transforms[cam_key] = build_chained_transform(
                 cam_cfg, transforms[parent_key]
             )
@@ -134,6 +170,14 @@ def build_camera_transforms(config, enabled_keys=None):
 
         frame_ids[cam_key] = cam_cfg["frame_id"]
         colors[cam_key] = cam_cfg.get("color", [1.0, 0.0, 0.0])
+
+    # Only return transforms for cameras the caller asked to enable (not parents
+    # pulled in solely for chaining), unless enabled_keys is None (all).
+    if enabled_keys is not None:
+        enabled = set(enabled_keys)
+        transforms = {k: v for k, v in transforms.items() if k in enabled}
+        frame_ids = {k: v for k, v in frame_ids.items() if k in enabled}
+        colors = {k: v for k, v in colors.items() if k in enabled}
 
     return transforms, frame_ids, colors
 

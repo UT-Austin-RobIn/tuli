@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Reorganize a Windows Qualisys dump into the layout expected by prepare scripts.
+"""Reorganize Qualisys calibration files into the layout expected by prepare scripts.
 
-Windows files must be scp'd to a SEPARATE tree that never overwrites Linux bags:
+Linux RealSense bags and Qualisys exports live under:
 
-  ~/infants/data/calibration_data/from_windows/{session}/   # scp target
-  ~/infants/data/calibration_data/{session}/                # Linux bags live here
+  ~/infants/data/calibration_data/{session}/
 
-This script pulls Qualisys AVI/TSV/qca from from_windows/{session}/ (and any
-flat leftovers already under {session}/) into:
+With --infant, fetches from Windows and organizes in one step:
+
+  windows:D:/Roberto_project/{infant}/calibration
+    -> {session}/left_to_qualisys/ ...
+    -> {session}/right_to_qualisys/ ...
+    -> {session}/{session}_mocap_calibration.txt
+
+Without --infant, organizes flat Qualisys files already sitting under
+{session}/ (never overwrites ros.bag).
+
+Target layout:
 
   {session}/
     {session}_mocap_calibration.txt
@@ -17,10 +25,9 @@ flat leftovers already under {session}/) into:
     left_to_mid/          # ros.bag only from Linux; never touched here
     _unused/
 
-Never deletes or overwrites ros.bag.
-
 Usage:
   python infants/scripts/organize_calibration_session.py --folder 26_07_30_infant_002
+  python infants/scripts/organize_calibration_session.py --folder 26_06_25_infant_015 --infant 015
   python infants/scripts/organize_calibration_session.py --folder 26_07_30_infant_002 --dry-run
 """
 from __future__ import annotations
@@ -28,11 +35,14 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 DATA_ROOT = Path("/home/robotlearning2/infants/data/calibration_data")
-FROM_WINDOWS = "from_windows"
+DEFAULT_WINDOWS_HOST = "windows"
+WINDOWS_PROJECT_ROOT = "D:/Roberto_project"
+WINDOWS_CALIB_DIR = "calibration"
 
 PAIR_MIQUS = {
     "left_to_qualisys": "Miqus_1_31039",
@@ -57,6 +67,22 @@ def parse_args() -> argparse.Namespace:
         "--folder",
         required=True,
         help="Session folder name, e.g. 26_07_30_infant_002",
+    )
+    p.add_argument(
+        "--infant",
+        help="Infant id on Windows (e.g. 015). scp from "
+        f"{DEFAULT_WINDOWS_HOST}:{WINDOWS_PROJECT_ROOT}/{{infant}}/calibration "
+        "into the session folder, then organize into left/right_to_qualisys/.",
+    )
+    p.add_argument(
+        "--windows-host",
+        default=DEFAULT_WINDOWS_HOST,
+        help=f"SSH/scp host alias for Windows (default: {DEFAULT_WINDOWS_HOST})",
+    )
+    p.add_argument(
+        "--skip-fetch",
+        action="store_true",
+        help="Do not scp from Windows even if --infant is set",
     )
     p.add_argument(
         "--data-root",
@@ -96,11 +122,12 @@ def copy_path(src: Path, dst: Path, dry_run: bool) -> None:
 
 
 def iter_files(*dirs: Path):
+    """Yield files under each directory tree (recursive)."""
     seen: set[Path] = set()
     for d in dirs:
         if not d.is_dir():
             continue
-        for path in sorted(d.iterdir()):
+        for path in sorted(d.rglob("*")):
             if not path.is_file():
                 continue
             key = path.resolve()
@@ -110,14 +137,88 @@ def iter_files(*dirs: Path):
             yield path
 
 
+def loose_tsv_matches_pair(name: str, pair: str) -> bool:
+    lower = name.lower()
+    return lower.endswith(".tsv") and pair in lower
+
+
+def loose_avi_matches_pair(name: str, pair: str, needed_miqus: str) -> bool:
+    lower = name.lower()
+    return (
+        lower.endswith(".avi")
+        and pair in lower
+        and needed_miqus.lower() in lower
+    )
+
+
+def flatten_windows_calibration_folder(session_dir: Path, dry_run: bool) -> None:
+    """scp -r copies the remote folder itself; lift files up and drop the extra dir."""
+    nested = session_dir / WINDOWS_CALIB_DIR
+    if not nested.is_dir():
+        return
+    print(f"[INFO] Flattening {nested.name}/ into {session_dir}")
+    for item in sorted(nested.iterdir()):
+        dest = session_dir / item.name
+        if dest.exists():
+            print(f"  SKIP  {item.name} (already present)")
+            if not dry_run and item.is_file():
+                item.unlink()
+            continue
+        move_path(item, dest, dry_run)
+    if dry_run:
+        return
+    leftover = [p for p in nested.iterdir()]
+    if leftover:
+        print(f"[WARN] Could not remove {nested}; leftover: {[p.name for p in leftover]}")
+        return
+    nested.rmdir()
+    print(f"[OK] Removed extra directory {nested.name}/")
+
+
+def fetch_from_windows(
+    infant: str,
+    session_dir: Path,
+    host: str,
+    dry_run: bool,
+) -> None:
+    """scp Qualisys calibration dump from Windows into the Linux session folder."""
+    infant = infant.strip()
+    if not infant:
+        raise ValueError("--infant must be non-empty")
+
+    remote_dir = f"{WINDOWS_PROJECT_ROOT}/{infant}/{WINDOWS_CALIB_DIR}"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    src = f"{host}:{remote_dir}"
+    dst = str(session_dir)
+    print(f"[INFO] Fetching {src}  ->  {dst}/")
+    if dry_run:
+        print("[INFO] Dry run — skipping scp.")
+        flatten_windows_calibration_folder(session_dir, dry_run)
+        return
+
+    # Same form as: scp -r windows:D:/Roberto_project/050/calibration ./
+    proc = subprocess.run(
+        ["scp", "-r", src, dst],
+        capture_output=False,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"scp failed (exit {proc.returncode}). "
+            f"Ensure SSH works: scp -r {src} {dst}"
+        )
+    flatten_windows_calibration_folder(session_dir, dry_run=False)
+    print(f"[OK] Windows files copied into {session_dir}")
+
+
 def find_qca(*dirs: Path) -> Path | None:
     candidates: list[Path] = []
     for d in dirs:
         if not d.is_dir():
             continue
         for pattern in ("*.qca.txt", "*.qca", "*mocap_calibration*", "*calibration*.txt"):
-            for path in d.glob(pattern):
-                if path.is_file() and path.parent.name != "_unused":
+            for path in d.rglob(pattern):
+                if path.is_file() and "_unused" not in path.parts:
                     candidates.append(path)
     xmlish = []
     for path in sorted(set(candidates)):
@@ -150,11 +251,13 @@ def find_avi_for_pair(
             return path
     for path in iter_files(*search_dirs):
         m = AVI_RE.match(path.name)
-        if not m:
+        if m:
+            if m.group("pair").lower() != pair:
+                continue
+            if normalize_miqus(m.group("miqus")) == needed_miqus:
+                return path
             continue
-        if m.group("pair").lower() != pair:
-            continue
-        if normalize_miqus(m.group("miqus")) == needed_miqus:
+        if loose_avi_matches_pair(path.name, pair, needed_miqus):
             return path
     return None
 
@@ -173,6 +276,8 @@ def find_tsv_for_pair(
     for path in iter_files(*search_dirs):
         m = TSV_RE.match(path.name)
         if m and m.group("pair").lower() == pair:
+            return path
+        if loose_tsv_matches_pair(path.name, pair):
             return path
     return None
 
@@ -215,29 +320,34 @@ def main() -> int:
     session = args.folder.strip().strip("/")
     data_root = args.data_root.resolve()
     session_dir = data_root / session
-    incoming_dir = data_root / FROM_WINDOWS / session
-
-    if not session_dir.is_dir() and not incoming_dir.is_dir():
-        print(
-            f"[ERROR] Neither session nor Windows dump found:\n"
-            f"  {session_dir}\n"
-            f"  {incoming_dir}",
-            file=sys.stderr,
-        )
-        return 1
 
     if not session_dir.is_dir():
-        print(f"[INFO] Creating Linux session dir (bags go here when recorded): {session_dir}")
-        if not args.dry_run:
-            session_dir.mkdir(parents=True, exist_ok=True)
+        if args.infant or args.dry_run:
+            print(f"[INFO] Creating session dir: {session_dir}")
+            if not args.dry_run:
+                session_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            print(
+                f"[ERROR] Session folder not found: {session_dir}\n"
+                "Record Linux bags first, or pass --infant to fetch from Windows.",
+                file=sys.stderr,
+            )
+            return 1
 
-    print(f"[INFO] Linux session (bags):     {session_dir}")
-    print(f"[INFO] Windows dump (if any):    {incoming_dir}")
+    print(f"[INFO] Session folder: {session_dir}")
     if args.dry_run:
         print("[INFO] Dry run — no files will be changed.")
 
-    # Search Windows dump first, then flat leftovers in session root
-    search_dirs = (incoming_dir, session_dir)
+    flatten_windows_calibration_folder(session_dir, args.dry_run)
+
+    if args.infant and not args.skip_fetch:
+        try:
+            fetch_from_windows(args.infant, session_dir, args.windows_host, args.dry_run)
+        except (FileNotFoundError, RuntimeError, ValueError) as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 1
+
+    search_dirs = (session_dir,)
     unused = session_dir / "_unused"
     errors: list[str] = []
     warnings: list[str] = []
@@ -280,7 +390,7 @@ def main() -> int:
         if avi is None:
             errors.append(
                 f"No AVI for {pair} with camera {needed_miqus} "
-                f"(put Qualisys dump under {FROM_WINDOWS}/{session}/)"
+                f"(expected under {session_dir})"
             )
         else:
             dst = pair_dir / f"{session}_{pair}_{needed_miqus}.avi"
@@ -294,7 +404,7 @@ def main() -> int:
         tsv = find_tsv_for_pair(session_dir, pair, *search_dirs)
         if tsv is None:
             errors.append(
-                f"No TSV for {pair} (put Qualisys dump under {FROM_WINDOWS}/{session}/)"
+                f"No TSV for {pair} (expected under {session_dir})"
             )
         else:
             dst = pair_dir / f"{session}_{pair}.tsv"
@@ -309,8 +419,7 @@ def main() -> int:
     qca = find_qca(*search_dirs)
     if qca is None:
         errors.append(
-            f"No Qualisys mocap calibration (.qca / .qca.txt) under "
-            f"{FROM_WINDOWS}/{session}/ or {session}/"
+            f"No Qualisys mocap calibration (.qca / .qca.txt) under {session_dir}/"
         )
     elif qca.resolve() == mocap_dst.resolve():
         print(f"  OK    {mocap_dst.name}")
@@ -320,7 +429,7 @@ def main() -> int:
             unused.mkdir(parents=True, exist_ok=True)
         copy_path(qca, mocap_dst, args.dry_run)
         mark(mocap_dst)
-        # Leave original in from_windows; if it was under session root, park it
+        # If a duplicate sat in the session root, park it after copying canonical name.
         if qca.parent.resolve() == session_dir.resolve() and qca.name != mocap_dst.name:
             move_path(qca, unused / qca.name, args.dry_run)
             mark(qca)
@@ -350,12 +459,18 @@ def main() -> int:
             print(f"[ERROR] {e}")
         print()
         print("[FAIL] Fix the Qualisys file errors above, then re-run this script.")
-        print(
-            "Safe Windows scp (separate folder — cannot overwrite Linux bags):\n"
-            f'  scp -r ".\\{session}" '
-            f"robotlearning2@192.168.253.201:"
-            f"~/infants/data/calibration_data/{FROM_WINDOWS}/"
-        )
+        if args.infant:
+            print(
+                "Re-fetch from Windows, then re-run:\n"
+                f"  python infants/scripts/organize_calibration_session.py "
+                f"--folder {session} --infant {args.infant}"
+            )
+        else:
+            print(
+                "Place Qualisys files under the session folder, or fetch automatically:\n"
+                f"  python infants/scripts/organize_calibration_session.py "
+                f"--folder {session} --infant XXX"
+            )
         return 1
 
     print()

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Build an RViz config for trial visualization."""
+"""Build an RViz config for trial visualization.
+
+When Fixed Frame is qualisys_mcR, the view uses rviz/Orbit centered on the
+workspace. Yaw is a 180deg back-and-forth driven by orbit_drag_yaw.py.
+"""
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Optional, Sequence
 
 from calibration_chain import MOCAP_REF_FRAME
+from orbit_view import ORBIT_CAM_FRAME, orbit_params_from_calib
 
 CAMERA_TOPICS = {
     "L": "/cam_L/points",
     "M": "/cam_M/points",
     "R": "/cam_R/points",
-}
-
-CAMERA_IMAGE_TOPICS = {
-    "L": "/cam_L/color/image_raw",
-    "M": "/cam_M/color/image_raw",
-    "R": "/cam_R/color/image_raw",
 }
 
 CAMERA_FRAMES = {
@@ -22,7 +24,6 @@ CAMERA_FRAMES = {
     "R": "cam_R_color_optical_frame",
 }
 
-# Distinct flat colors so overlapping aligned clouds are still distinguishable.
 CAMERA_COLORS = {
     "L": "255; 64; 64",
     "M": "64; 255; 64",
@@ -65,26 +66,28 @@ def _pointcloud_display(name, topic, use_flat_color=False):
       Value: true"""
 
 
-def _image_display(name, topic):
-    """2D RealSense RGB so the camera video is visible (not only the point cloud)."""
-    return f"""    - Class: rviz/Image
-      Enabled: true
-      Image Topic: {topic}
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: cam_{name}_image
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: true"""
-
-
-def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=False):
-    # When use_mcr_frame, RViz Fixed Frame = qualisys_mcR; TF qualisys_mcR->cam_X
-    # reprojects each camera-frame cloud into the mocap reference frame.
+def generate_rviz_config(
+    cameras,
+    show_markers,
+    fixed_camera="L",
+    use_mcr_frame=False,
+    calib_config: Optional[Path] = None,
+    look_depth: float = 1.2,
+    animate_orbit: bool = True,
+):
     fixed_frame = MOCAP_REF_FRAME if use_mcr_frame else CAMERA_FRAMES[fixed_camera]
+    use_orbit = bool(animate_orbit and use_mcr_frame)
+    orbit = None
+    if use_orbit:
+        orbit = orbit_params_from_calib(
+            calib_config, cameras, use_mcr_frame, look_depth
+        )
+        print(
+            "[rviz] Orbit view: "
+            f"center={tuple(round(c, 3) for c in orbit['center'])} "
+            f"distance={orbit['radius']:.2f}m (yaw animated while recording)"
+        )
+
     displays = [
         """    - Alpha: 0.5
       Cell Size: 0.1
@@ -108,21 +111,19 @@ def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=
 
     if len(cameras) > 1 or use_mcr_frame:
         displays.append("""    - Class: rviz/TF
-      Enabled: true
+      Enabled: false
       Frame Timeout: 15
-      Marker Scale: 0.2
+      Marker Scale: 0.15
       Name: TF
-      Show Arrows: true
+      Show Arrows: false
       Show Axes: true
       Show Names: false
       Update Interval: 0
-      Value: true""")
+      Value: false""")
 
-    # use_flat_color = len(cameras) > 1
     use_flat_color = False
     for cam in cameras:
         displays.append(_pointcloud_display(cam, CAMERA_TOPICS[cam], use_flat_color))
-        displays.append(_image_display(cam, CAMERA_IMAGE_TOPICS[cam]))
 
     if show_markers:
         displays.append("""    - Class: rviz/MarkerArray
@@ -132,52 +133,58 @@ def generate_rviz_config(cameras, show_markers, fixed_camera="L", use_mcr_frame=
       Queue Size: 100
       Value: true""")
 
-    expanded = ["        - /Global Options1", "        - /Grid1"]
-    for cam in cameras:
-        expanded.append(f"        - /cam_{cam}1")
-        expanded.append(f"        - /cam_{cam}_image1")
-    if show_markers:
-        expanded.append("        - /CalibrationMarkers1")
-
-    # Image panel(s) so RGB video is on-screen without hunting Displays
-    image_panels = []
-    for i, cam in enumerate(cameras):
-        image_panels.append(
-            f"""  - Class: rviz/Image
-    Name: cam_{cam} RGB
-    Topic: {CAMERA_IMAGE_TOPICS[cam]}
-    Transport Hint: raw
-    Unreliable: false
-    Window Geometry:
-      X: 800
-      Y: {50 + i * 420}
-      Width: 640
-      Height: 400"""
-        )
+    if use_orbit and orbit is not None:
+        # Known-good Orbit view centered on the workspace. Yaw is animated during
+        # recording by orbit_drag_yaw.py as a 180deg back-and-forth (no ROS yaw API).
+        cx, cy, cz = orbit["center"]
+        views = f"""    Current:
+      Class: rviz/Orbit
+      Distance: {orbit['radius']:.6f}
+      Enable Stereo: false
+      Eye Angle: 0
+      Focal Point:
+        X: {cx:.6f}
+        Y: {cy:.6f}
+        Z: {cz:.6f}
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.05
+      Pitch: 0.620000
+      Target Frame: <Fixed Frame>
+      Yaw: {orbit['yaw0']:.6f}"""
+    else:
+        views = f"""    Current:
+      Class: rviz/Orbit
+      Distance: {look_depth * 1.15:.6f}
+      Focal Point:
+        X: 0.000000
+        Y: 0.000000
+        Z: {look_depth:.6f}
+      Name: Current View
+      Near Clip Distance: 0.05
+      Pitch: 1.570796
+      Target Frame: <Fixed Frame>
+      Yaw: -1.570796"""
 
     body = f"""Panels:
   - Class: rviz/Displays
-    Help Height: 70
+    Help Height: 0
     Name: Displays
     Property Tree Widget:
       Expanded:
-{chr(10).join(expanded)}
+        - /Global Options1
+        - /Grid1
       Splitter Ratio: 0.5
-    Tree Height: 600
-  - Class: rviz/Selection
-    Name: Selection
-  - Class: rviz/Views
-    Expanded:
-      - /Current View1
-    Name: Views
-{chr(10).join(image_panels)}
+    Tree Height: 100
 Visualization Manager:
   Class: ""
   Displays:
 {chr(10).join(displays)}
   Enabled: true
   Global Options:
-    Background Color: 48; 48; 48
+    Background Color: 72; 72; 76
     Default Light: true
     Fixed Frame: {fixed_frame}
     Frame Rate: 30
@@ -190,34 +197,44 @@ Visualization Manager:
     - Class: rviz/FocusCamera
   Value: true
   Views:
-    Current:
-      Class: rviz/Orbit
-      Distance: 3.0
-      Focal Point:
-        X: 0.3
-        Y: 0.0
-        Z: 0.4
-      Name: Current View
-      Near Clip Distance: 0.01
-      Pitch: 0.6
-      Target Frame: <Fixed Frame>
-      Yaw: 0.9
+{views}
     Saved: ~
 Window Geometry:
-  Height: 1000
-  Width: 1600
-  X: 40
-  Y: 40
+  Displays:
+    collapsed: true
+  Height: 1080
+  Hide Left Dock: true
+  Hide Right Dock: true
+  Width: 1920
+  X: 0
+  Y: 0
 Preferences:
   PromptSaveOnExit: false
 """
     return body
 
 
-def write_rviz_config(output_path, cameras, show_markers, fixed_camera="L", use_mcr_frame=False):
+def write_rviz_config(
+    output_path,
+    cameras,
+    show_markers,
+    fixed_camera="L",
+    use_mcr_frame=False,
+    calib_config: Optional[Path] = None,
+    look_depth: float = 1.2,
+    animate_orbit: bool = True,
+):
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
-        generate_rviz_config(cameras, show_markers, fixed_camera, use_mcr_frame)
+        generate_rviz_config(
+            cameras,
+            show_markers,
+            fixed_camera,
+            use_mcr_frame,
+            calib_config=calib_config,
+            look_depth=look_depth,
+            animate_orbit=animate_orbit,
+        )
     )
     return output_path

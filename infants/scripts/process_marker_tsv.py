@@ -204,14 +204,14 @@ def parse_args():
     parser.add_argument(
         "--keep-marker-bag",
         action="store_true",
-        default=True,
-        help="Keep the intermediate marker bag after merging (default: true)",
+        default=False,
+        help="Keep the intermediate marker bag after merging (default: delete it)",
     )
     parser.add_argument(
         "--no-keep-marker-bag",
         dest="keep_marker_bag",
         action="store_false",
-        help="Delete intermediate marker bag after merging",
+        help="Delete intermediate marker bag after merging (default)",
     )
     return parser.parse_args()
 

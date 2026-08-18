@@ -8,7 +8,7 @@ This document describes the procedure for calibrating the following transforms:
 - `RS_right` → `Qualisys_right`
 - `RS_mid` → `RS_left`
 
-### Optional: guided capture helper
+<!-- ### Optional: guided capture helper
 
 Walkthrough for recording + transfer + file layout (names filled in):
 
@@ -27,7 +27,7 @@ Press ENTER at each pause. It will:
 
 The manual steps below still work (long Qualisys names + per-file scp).
 
----
+--- -->
 
 # 1. Mocap Calibration
 
@@ -37,7 +37,7 @@ This step outputs a `TODO` file.
 
 ---
 
-# 2. Initial Setup
+# 2. Initial Setup<!-- Skip this section if you used `guided_calibration_capture.sh` — it already copies Qualisys files to `from_windows/` and runs `organize_calibration_session.py`. -->
 
 ## Qualisys Settings
 
@@ -82,7 +82,7 @@ In a new terminal:
 
 This should output: 
 ```
-                 topic                     rate   min_delta   max_delta   std_dev    window
+                 topic                     rate  min_delta   max_delta   std_dev    window
 ===========================================================================================
 /cam_L/color/image_raw                    29.97   0.01206     0.04849     0.002946   141   
 /cam_L/aligned_depth_to_color/image_raw   29.95   0.01237     0.04816     0.002854   141   
@@ -105,7 +105,6 @@ Then stop:
 - the Linux recording script by pressing space bar
 
 ## 3.4 Export TSV File
-
 In Qualisys:
 
 ```text
@@ -131,7 +130,6 @@ Press `Ctrl+C` in the terminal that was running `./start_camera_for_calibration 
 # 4. Collect data for calibrating `RS_right` → `Qualisys_right`
 
 ## 4.1 Start Camera Stream
-
 ```bash
 ./infants/scripts/start_camera_for_calibration --right
 ```
@@ -144,7 +142,13 @@ In a new terminal:
 ./infants/scripts/check_cams.sh
 ```
 
-This should output `TODO`.
+This should output: 
+```
+                 topic                     rate   min_delta   max_delta   std_dev    window
+===========================================================================================
+/cam_R/color/image_raw                    30.01   0.02258     0.04207     0.002961   120   
+/cam_R/aligned_depth_to_color/image_raw   30.01   0.0226      0.04238     0.002933   120 
+```
 
 If not, contact Arpit or Daniel.
 
@@ -222,30 +226,19 @@ Perform the calibration data collection procedure.
 
 # 6. Transfer Files to the Linux Machine
 
-Skip this section if you used `guided_calibration_capture.sh` — it already copies Qualisys files to `from_windows/` and runs `organize_calibration_session.py`.
-
-Open Windows PowerShell and run:
 
 ```bash
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/left_to_qualisys/
-
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_left_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/left_to_qualisys/
-
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/right_to_qualisys/
-
-scp 'C:\Users\UT Austin\Documents\Qualisys0326\Data\{yy_mm_dd_XXX}_right_to_qualisys.tsv' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/right_to_qualisys/
-
-scp windows:D:/Roberto_project/{XXX}/{yy_mm_dd_XXX}_mocap_calibration.txt' robotlearning2@192.168.253.201:~/infants/data/calibration_data/{yy_mm_dd_XXX}/
+python infants/scripts/organize_calibration_session.py --folder {yy_mm_dd_XXX} --infant XXX
 ```
 
 So, finally we should have the following in the `~/infants/data/calibration_data/{yy_mm_dd_XXX}` folder:
 1. `left_to_qualisys/ros.bag`
-2. `right_to_qualisys/ros.bag`
-3. `left_to_mid/ros.bag`
-4. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi`
+2. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys_Miqus_1_31039.avi`
+3. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys.tsv`
+4. `right_to_qualisys/ros.bag`
 5. `right_to_qualisys/{yy_mm_dd_XXX}_right_to_qualisys_Miqus_10_31041.avi`
-6. `left_to_qualisys/{yy_mm_dd_XXX}_left_to_qualisys.tsv`
-7. `right_to_qualisys/{yy_mm_dd_XXX}_right_to_qualisys.tsv`
+6. `right_to_qualisys/{yy_mm_dd_XXX}_right_to_qualisys.tsv`
+7. `left_to_mid/ros.bag`
 8. `{yy_mm_dd_XXX}_mocap_calibration.txt`
 
 
@@ -268,7 +261,7 @@ python examples/perform_calibration.py --data-path /home/robotlearning2/infants/
 python examples/perform_calibration.py --data-path /home/robotlearning2/infants/data/calibration_data/{folder_name}/left_to_mid
 ```
 
-9. Export the calibration results to a unified yaml file
+# 9. Export the calibration results to a unified yaml file
 ```bash
 cd ~/infants
 source ~/envs/infants/bin/activate

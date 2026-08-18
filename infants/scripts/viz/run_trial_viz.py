@@ -22,9 +22,9 @@ Examples:
       --calib-config data/calibration_data/26_06_29_infant_017/calibration_markers.yaml
 """
 import argparse
+import atexit
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -36,11 +36,23 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS_DIR))
 from calibration_chain import MOCAP_REF_FRAME
 from generate_trial_viz_rviz import write_rviz_config
+from viz_lifecycle import (
+    install_stop_signals,
+    kill_stale_viz,
+    popen_session,
+    raise_keyboard,
+    restore_wall_clock_time,
+    set_use_sim_time,
+    sleep_interruptible,
+    stop_proc,
+)
 
-INFANTS_ROOT = Path(__file__).resolve().parents[2]
+# .../infants/infants/scripts/viz -> repo root is parents[3]
+INFANTS_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CALIB_CONFIG = INFANTS_ROOT / "config" / "calibration_markers_example.yaml"
 LAUNCH_FILE = INFANTS_ROOT / "launch" / "trial_viz.launch"
 RECORD_SCRIPT = SCRIPTS_DIR / "record_rviz_screen.sh"
+ORBIT_DRAG_SCRIPT = SCRIPTS_DIR / "orbit_drag_yaw.py"
 DEFAULT_RECORDINGS_DIR = INFANTS_ROOT / "recordings"
 
 VALID_CAMERAS = ("L", "M", "R")
@@ -66,34 +78,60 @@ def default_record_path(bag_path: Path) -> Path:
     return DEFAULT_RECORDINGS_DIR / f"rviz_{bag_path.stem}_{stamp}.mp4"
 
 
-def stop_proc(proc, name, timeout=5):
-    if proc is None or proc.poll() is not None:
+_RESTORE_DONE = False
+
+
+def _restore_wall_clock_time_once():
+    """Force /use_sim_time=false so live cameras use wall clock after bag viz."""
+    global _RESTORE_DONE
+    if _RESTORE_DONE:
         return
-    proc.send_signal(signal.SIGINT)
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        print(f"[{name}] SIGINT timed out; killing")
-        proc.kill()
-        proc.wait()
+    _RESTORE_DONE = True
+    restore_wall_clock_time()
 
 
-def restore_wall_clock_time():
-    """Clear /use_sim_time so later live recording uses wall clock."""
+def wait_for_rviz_window(display_id: str, timeout_sec: float = 45.0) -> bool:
+    """Block until an RViz window is mapped on DISPLAY (avoids recording pure black)."""
+    env = os.environ.copy()
+    env["DISPLAY"] = display_id
+    deadline = time.time() + float(timeout_sec)
+    print(f"[record] Waiting for RViz window on {display_id}...")
+    while time.time() < deadline:
+        try:
+            tree = subprocess.run(
+                ["xwininfo", "-root", "-tree"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                env=env,
+            )
+            text = (tree.stdout or "") + (tree.stderr or "")
+            if "rviz" in text.lower():
+                # Give the first paint / fullscreen a moment.
+                time.sleep(1.0)
+                print("[record] RViz window found")
+                return True
+        except Exception:
+            pass
+        time.sleep(0.4)
+    print("[WARN] Timed out waiting for RViz window; recording anyway")
+    return False
+
+
+# Track launch proc so SIGTERM/SIGINT handlers can stop it before restoring time.
+_ACTIVE = {"proc": None, "record": None, "audio": None, "orbit_drag": None}
+
+
+def bag_play_duration_sec(bag_path: Path) -> float:
+    """Wall-clock span of messages in the bag (end - start)."""
     try:
-        result = subprocess.run(
-            ["rosparam", "set", "/use_sim_time", "false"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            print("[INFO] Restored /use_sim_time=false")
-        else:
-            err = (result.stderr or result.stdout or "").strip()
-            print(f"[WARN] Could not restore /use_sim_time: {err or 'rosparam failed'}")
-    except Exception as exc:
-        print(f"[WARN] Could not restore /use_sim_time: {exc}")
+        import rosbag
+    except ImportError:
+        return 0.0
+    with rosbag.Bag(str(bag_path), "r") as bag:
+        start = bag.get_start_time()
+        end = bag.get_end_time()
+    return max(0.0, float(end) - float(start))
 
 
 def extract_bag_audio_mp3(bag_path: Path, topic: str = "/audio/audio"):
@@ -256,14 +294,61 @@ def main():
     parser.add_argument(
         "--record-delay",
         type=float,
-        default=2.0,
-        help="Seconds to wait after launching RViz before starting screen record (default: 2)",
+        default=5.0,
+        help="Seconds to wait after launching RViz before starting screen record (default: 5)",
+    )
+    parser.add_argument(
+        "--stop-pad",
+        type=float,
+        default=1.0,
+        help="Extra seconds to keep recording after the bag ends before teardown (default: 1)",
+    )
+    parser.add_argument(
+        "--look-depth",
+        type=float,
+        default=1.2,
+        help="Meters along each RealSense optical axis used to seed the orbit focus",
+    )
+    parser.add_argument(
+        "--orbit",
+        dest="orbit",
+        action="store_true",
+        default=True,
+        help="Slow 180deg back-and-forth RViz yaw through the trial (default: on with mcR)",
+    )
+    parser.add_argument(
+        "--no-orbit",
+        dest="orbit",
+        action="store_false",
+        help="Disable orbit; use a static camera-frame Orbit view",
+    )
+    parser.add_argument(
+        "--orbit-period",
+        type=float,
+        default=None,
+        help="Seconds to keep yawing (default: bag duration; one 180 out+back fills this)",
+    )
+    parser.add_argument(
+        "--max-markers",
+        type=int,
+        default=0,
+        help="Optional cap on /marker_N subscriptions (0=use full YAML num_markers)",
     )
     args = parser.parse_args()
     # Viewing: loop so RViz does not go blank after one pass.
     # Recording: play once unless the user passed --loop.
     if args.loop is None:
         args.loop = not args.record
+    # Give marker_transformer / TF / RViz time before bag playback / recording.
+    # Too-short delays + /use_sim_time=false mid-run produce pure-black MP4s.
+    if args.markers:
+        # Bag-backed marker index takes ~45s to build; wait so markers exist from t0.
+        if args.bag_delay < 48.0:
+            args.bag_delay = 50.0
+        if args.record and args.record_delay < 52.0:
+            args.record_delay = 55.0
+    elif args.record and args.record_delay < 4.0:
+        args.record_delay = 4.0
 
     bag_path = args.bag.expanduser().resolve()
     if not bag_path.is_file():
@@ -271,6 +356,7 @@ def main():
     if not LAUNCH_FILE.is_file():
         raise SystemExit(f"Launch file not found: {LAUNCH_FILE}")
 
+    bag_duration = bag_play_duration_sec(bag_path)
     record_path = None
     silent_record_path = None
     if args.record:
@@ -288,21 +374,29 @@ def main():
 
     cameras = parse_cameras(args.cameras)
     calib_config = args.calib_config.expanduser().resolve()
-    needs_calib = (len(cameras) > 1 and not args.raw) or args.markers
-    if needs_calib and not calib_config.is_file():
-        raise SystemExit(
-            f"Calibration config required for multi-camera or markers: {calib_config}"
-        )
-
     use_debug_layout = args.raw and len(cameras) > 1
+    # Calib TF is required for multi-cam alignment, markers, or explicit mcR view.
+    needs_calib = ((len(cameras) > 1 and not args.raw) or args.markers) and not use_debug_layout
     # Default: express clouds in mcR whenever we have a calibration chain.
     if args.mcr_frame is None:
         use_mcr_frame = needs_calib and not use_debug_layout
     else:
-        use_mcr_frame = args.mcr_frame and not use_debug_layout
+        use_mcr_frame = bool(args.mcr_frame) and not use_debug_layout
+    if use_mcr_frame:
+        needs_calib = True
+    if needs_calib and not calib_config.is_file():
+        raise SystemExit(
+            f"Calibration config required for multi-camera, markers, or --mcr-frame: {calib_config}"
+        )
 
     # TF broadcaster needed for multi-camera alignment OR mcR reprojection.
     show_calib_tf = (len(cameras) > 1 and not args.raw) or use_mcr_frame
+    animate_orbit = bool(args.orbit and use_mcr_frame)
+    orbit_period = (
+        float(args.orbit_period)
+        if args.orbit_period is not None
+        else max(bag_duration, 1.0)
+    )
 
     rviz_fd, rviz_name = tempfile.mkstemp(prefix="trial_viz_", suffix=".rviz")
     os.close(rviz_fd)
@@ -313,6 +407,9 @@ def main():
         args.markers,
         fixed_camera=fixed_camera(cameras),
         use_mcr_frame=use_mcr_frame,
+        calib_config=calib_config if needs_calib else None,
+        look_depth=args.look_depth,
+        animate_orbit=animate_orbit,
     )
 
     camera_csv = ",".join(cameras)
@@ -326,6 +423,7 @@ def main():
         f"subsample:={args.subsample}",
         f"cameras:={camera_csv}",
         f"show_markers:={'true' if args.markers else 'false'}",
+        f"max_markers:={args.max_markers}",
         f"calib_config:={calib_config if needs_calib else ''}",
         f"show_calib_tf:={'true' if show_calib_tf else 'false'}",
         f"use_mcr_frame:={'true' if use_mcr_frame else 'false'}",
@@ -334,6 +432,9 @@ def main():
         f"show_cam_L:={'true' if 'L' in cameras else 'false'}",
         f"show_cam_M:={'true' if 'M' in cameras else 'false'}",
         f"show_cam_R:={'true' if 'R' in cameras else 'false'}",
+        f"animate_orbit:={'false'}",
+        f"orbit_period:={orbit_period:.3f}",
+        f"look_depth:={args.look_depth}",
     ]
 
     print("=== Trial visualization ===")
@@ -344,7 +445,15 @@ def main():
     print(f"Record:    {record_path if args.record else False}")
     print(f"Raw layout:{use_debug_layout}")
     print(f"mcR frame: {use_mcr_frame} (RViz Fixed Frame = {MOCAP_REF_FRAME if use_mcr_frame else 'camera'})")
+    print(f"Orbit:     {animate_orbit} (180deg back-forth, duration={orbit_period:.1f}s)")
     print(f"Loop:      {args.loop}")
+    if not args.loop:
+        auto_sec = float(args.bag_delay) + bag_duration + float(args.stop_pad)
+        print(
+            f"Auto-stop: after bag ends "
+            f"(~{auto_sec:.1f}s = delay {args.bag_delay:.1f} + "
+            f"bag {bag_duration:.1f} + pad {args.stop_pad:.1f}; no Ctrl+C needed)"
+        )
     if len(cameras) > 1:
         print("Colors:    L=red, M=green, R=blue (toggle each under Displays)")
     if use_mcr_frame:
@@ -356,44 +465,105 @@ def main():
     print(f"Command:   {' '.join(launch_cmd)}\n")
 
     env = os.environ.copy()
+    # Suppress RViz's modal "ROS 1 End-of-Life" OK dialog (blocks unattended recording).
+    env["DISABLE_ROS1_EOL_WARNINGS"] = "1"
     env["PYTHONPATH"] = f"{SCRIPTS_DIR}:{env.get('PYTHONPATH', '')}"
+
+    # Ctrl+C / SIGTERM both become KeyboardInterrupt so finally always runs.
+    global _RESTORE_DONE
+    _RESTORE_DONE = False
+    atexit.register(_restore_wall_clock_time_once)
+    install_stop_signals(raise_keyboard)
+
+    kill_stale_viz()
+    # Must be true before bag/--clock or RViz drops messages → black empty view.
+    set_use_sim_time(True)
 
     audio_proc = None
     record_proc = None
+    orbit_drag_proc = None
     proc = None
+    exit_code = 0
+    stopped = False
     try:
         if args.audio:
             audio_cmd = ["roslaunch", "audio_play", "play.launch"]
             print(f"[audio] Starting: {' '.join(audio_cmd)}")
-            audio_proc = subprocess.Popen(audio_cmd, env=env)
+            audio_proc = popen_session(audio_cmd, env=env)
+            _ACTIVE["audio"] = audio_proc
 
-        proc = subprocess.Popen(launch_cmd, env=env)
+        proc = popen_session(launch_cmd, env=env)
+        _ACTIVE["proc"] = proc
+        t_launch = time.time()
+
+        display_id = env.get("DISPLAY", ":0")
+        if args.record or animate_orbit:
+            wait_for_rviz_window(
+                display_id, timeout_sec=max(30.0, args.record_delay + 20.0)
+            )
 
         if args.record:
             if args.record_delay > 0:
-                print(f"[record] Waiting {args.record_delay:.1f}s for RViz to come up...")
-                time.sleep(args.record_delay)
-            display_id = env.get("DISPLAY", ":0")
+                sleep_interruptible(
+                    args.record_delay,
+                    procs=(proc,),
+                    label="settle for TF/clouds/markers before record",
+                )
+            set_use_sim_time(True)
             record_cmd = [str(RECORD_SCRIPT), str(silent_record_path), display_id]
             print(f"[record] Starting: {' '.join(record_cmd)}")
-            record_proc = subprocess.Popen(record_cmd, env=env)
+            record_proc = popen_session(record_cmd, env=env)
+            _ACTIVE["record"] = record_proc
 
-        return proc.wait()
+        if animate_orbit and ORBIT_DRAG_SCRIPT.is_file():
+            drag_cmd = [
+                sys.executable,
+                str(ORBIT_DRAG_SCRIPT),
+                "--display", display_id,
+                "--period", f"{orbit_period:.3f}",
+                "--span-deg", "180",
+            ]
+            print(f"[orbit] Starting 180deg back-and-forth yaw: {' '.join(drag_cmd)}")
+            orbit_drag_proc = popen_session(drag_cmd, env=env)
+            _ACTIVE["orbit_drag"] = orbit_drag_proc
+
+        if args.loop:
+            exit_code = proc.wait()
+        else:
+            run_secs = float(args.bag_delay) + bag_duration + float(args.stop_pad)
+            remaining = max(1.0, run_secs - (time.time() - t_launch))
+            print(
+                f"[auto-stop] Waiting {remaining:.1f}s more "
+                f"(total window {run_secs:.1f}s from launch)..."
+            )
+            early = sleep_interruptible(remaining, procs=(proc,))
+            if early is not None:
+                print(f"[auto-stop] Launch exited early (code={early})")
+                exit_code = early
+            else:
+                print("[auto-stop] Bag window done; stopping launch")
+                stop_proc(proc, "roslaunch", timeout=15)
+                exit_code = proc.returncode if proc.returncode is not None else 0
+                proc = None
+                _ACTIVE["proc"] = None
     except KeyboardInterrupt:
-        if proc is not None:
-            proc.send_signal(signal.SIGINT)
-            return proc.wait()
-        return 130
+        stopped = True
+        print("\n[stop] Interrupted — shutting down RViz/record/orbit...", flush=True)
+        exit_code = 130
     finally:
-        stop_proc(record_proc, "record")
+        stop_proc(orbit_drag_proc, "orbit-drag")
+        stop_proc(record_proc, "record", timeout=12)
         stop_proc(audio_proc, "audio")
+        stop_proc(proc, "roslaunch")
+        _ACTIVE["proc"] = _ACTIVE["record"] = _ACTIVE["audio"] = _ACTIVE["orbit_drag"] = None
+        kill_stale_viz()
         if (
-            args.record
+            not stopped
+            and args.record
             and silent_record_path is not None
             and record_path is not None
             and silent_record_path.is_file()
         ):
-            # Bag play starts at bag_delay; screen capture at record_delay.
             audio_skip = float(args.record_delay) - float(args.bag_delay)
             mux_recording_with_bag_audio(
                 silent_record_path,
@@ -404,8 +574,12 @@ def main():
             silent_record_path.unlink(missing_ok=True)
             if record_path.is_file():
                 print(f"[record] Saved {record_path}")
+        elif stopped and silent_record_path is not None:
+            silent_record_path.unlink(missing_ok=True)
         rviz_path.unlink(missing_ok=True)
-        restore_wall_clock_time()
+        _restore_wall_clock_time_once()
+
+    return exit_code
 
 
 if __name__ == "__main__":
