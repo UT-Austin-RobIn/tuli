@@ -46,6 +46,7 @@ You should see all 6 camera topics (color image raw and aligned depth image raw 
 /cam_R/aligned_depth_to_color/image_raw   29.99   0.02894     0.039       0.001779   141   
 /audio/audio                              38.28   0.01948     0.0305      0.003658   141   
 ``` 
+if audio miss, run: `pulseaudio -k` and then rerun step 4 and 5.
 6. Activate the virtualenv, `source ~/envs/infants/bin/activate` 
 7. Run the experiment script: `python infants/experiment/experiment_driver.py`
 8. It will prompt for `subject ID`, `task name`, and `condition ID`. 
