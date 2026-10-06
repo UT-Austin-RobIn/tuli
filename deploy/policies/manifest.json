@@ -1,0 +1,30 @@
+{
+ "banging_ckpt17.cleanrl_model": {
+  "sha256": "c96efde69b1d7aad0b4619e0561b5d6f6a055cb026c13bd8032a73d717c8c500",
+  "source": "runs/current/banging_rand_bank999_proprio_h500_batch16k_20260915_160018/model/banging_rand_bank999_proprio_h500_batch16k_17.cleanrl_model",
+  "note": "banging source, 278,528 steps, seed 1"
+ },
+ "scratch_seed101_ckpt79.cleanrl_model": {
+  "sha256": "f05f1bb432a78d70cb340fcd3e11b66c93b6c10f8357a8315fd4568ba35c5b5f",
+  "source": "runs/current/scratch_proprio_target_x020_y010040_3seed_3m_20260916_r2/seed101/training/hammering_scratch_proprio_target_x020_y010040_seed101_h500_batch16k_3m_r2_20260916_134033/model/hammering_scratch_proprio_target_x020_y010040_seed101_h500_batch16k_3m_r2_79.cleanrl_model",
+  "note": "scratch PPO, 1,294,336 steps, panel 20/20"
+ },
+ "finetune_seed101_ckpt43.cleanrl_model": {
+  "sha256": "aec476347148e0bb70168255c1ec0004e52cb6d6eec3058087f86463c950e089",
+  "source": "runs/current/proprio_ckpt17_finetune_3seed_2m_20260916_r2/seed101/training/hammering_finetune_proprio_ckpt17_seed101_h500_batch16k_2m_r2_20260916_134203/model/hammering_finetune_proprio_ckpt17_seed101_h500_batch16k_2m_r2_43.cleanrl_model",
+  "note": "fine-tune PPO from banging ckpt17, 704,512 downstream steps, panel 20/20"
+ },
+ "gp_ucb_seed101_ckpt30.npz": {
+  "sha256": "4b650e954a06dd883ee833797b894e70357edbf852e98f50c290ff7147a4444a",
+  "source": "runs/current/proprio_ckpt17_gp_3seed_2m_20260916_r2/seed101/training/checkpoints/model_steps_0000491520.npz",
+  "note": "GP-UCB over 999 bank poses, 491,962 downstream steps, panel 19/20"
+ },
+ "start_poses.json": {
+  "sha256": "0471a8f644473ab85dbad00e38f89f55ef1ab5b6c40c3dcba7aae11bf38e6cd6",
+  "source": [
+   "configs/banging_rectangle_reset_bank.json (qpos, sha256 fe218f429bf31a87e38e0efae006cee43cba3073747af0b4843b274ea907786e)",
+   "runs/current/proprio_ckpt17_gp_3seed_2m_20260916_r2/seed101/training/preflight.json (ee_xyz, sha256 28b136fb3ccfeeb0f13ed493acea6e8d69057fe95e2e4ae9fbd4bf299d12eacc)"
+  ],
+  "note": "999 start poses: joint angles and simulated start end-effector XYZ (GP inputs)"
+ }
+}

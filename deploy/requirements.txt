@@ -1,0 +1,4 @@
+# Versions that produced the paper policies.
+numpy==2.2.6
+scipy==1.15.3
+torch==2.11.0
