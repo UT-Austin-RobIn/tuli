@@ -1,30 +1,40 @@
 {
+ "setup": {
+  "description": "kant setup: table top level with the robot base; 4 cm cube, 256 g, held rigidly (cannot move in the gripper); 3.7 cm adapter; cube bottom 14.73 cm above the table at the scratch / fine-tune start pose",
+  "table_offset_z": 0.912,
+  "cube_half_size": 0.02,
+  "cube_density": 4000.0,
+  "cube_offset": 0.0962,
+  "gripper_spacer": 0.037,
+  "cube_attach": "rigid",
+  "code": "branch table-at-base, commit dd92a9d"
+ },
  "banging_ckpt17.cleanrl_model": {
-  "sha256": "c96efde69b1d7aad0b4619e0561b5d6f6a055cb026c13bd8032a73d717c8c500",
-  "source": "runs/current/banging_rand_bank999_proprio_h500_batch16k_20260915_160018/model/banging_rand_bank999_proprio_h500_batch16k_17.cleanrl_model",
-  "note": "banging source, 278,528 steps, seed 1"
+  "sha256": "e908a927356d8532c243c860925d65914adc53d7c9734c870bcdd01497c52532",
+  "source": "runs/kant_rigid_20261010/banging_kant_rigid_bank999_proprio_h500_batch16k_20261010_144358/model/banging_kant_rigid_bank999_proprio_h500_batch16k_17.cleanrl_model",
+  "note": "banging, 278,528 steps, seed 1; low level of GP-UCB (sampled actions) and fine-tune source"
  },
- "scratch_seed101_ckpt79.cleanrl_model": {
-  "sha256": "f05f1bb432a78d70cb340fcd3e11b66c93b6c10f8357a8315fd4568ba35c5b5f",
-  "source": "runs/current/scratch_proprio_target_x020_y010040_3seed_3m_20260916_r2/seed101/training/hammering_scratch_proprio_target_x020_y010040_seed101_h500_batch16k_3m_r2_20260916_134033/model/hammering_scratch_proprio_target_x020_y010040_seed101_h500_batch16k_3m_r2_79.cleanrl_model",
-  "note": "scratch PPO, 1,294,336 steps, panel 20/20"
+ "scratch_ckpt109.cleanrl_model": {
+  "sha256": "dcebc1f1a15b0fc46ed0b8a8afb556088d836786ec7f0adbf99fd15af2f6576f",
+  "source": "runs/kant_rigid_20261010/hammering_scratch_kant_rigid_seed101_h500_batch16k_3m_20261010_144358/model/hammering_scratch_kant_rigid_seed101_h500_batch16k_3m_109.cleanrl_model",
+  "note": "scratch PPO, seed 101, 1,785,856 steps, panel 20/20 (deterministic)"
  },
- "finetune_seed101_ckpt43.cleanrl_model": {
-  "sha256": "aec476347148e0bb70168255c1ec0004e52cb6d6eec3058087f86463c950e089",
-  "source": "runs/current/proprio_ckpt17_finetune_3seed_2m_20260916_r2/seed101/training/hammering_finetune_proprio_ckpt17_seed101_h500_batch16k_2m_r2_20260916_134203/model/hammering_finetune_proprio_ckpt17_seed101_h500_batch16k_2m_r2_43.cleanrl_model",
-  "note": "fine-tune PPO from banging ckpt17, 704,512 downstream steps, panel 20/20"
+ "finetune_ckpt28.cleanrl_model": {
+  "sha256": "61251d59ffa6f86abd0d2ded9501f60b335eeb1197f8087eed685733427f3295",
+  "source": "runs/kant_rigid_20261010/hammering_finetune_kant_rigid_ckpt17_seed101_h500_batch16k_2m_20261010_145928/model/hammering_finetune_kant_rigid_ckpt17_seed101_h500_batch16k_2m_28.cleanrl_model",
+  "note": "fine-tuned PPO from banging ckpt 17, seed 101, 458,752 downstream steps, panel 20/20 (deterministic)"
  },
- "gp_ucb_seed101_ckpt30.npz": {
-  "sha256": "4b650e954a06dd883ee833797b894e70357edbf852e98f50c290ff7147a4444a",
-  "source": "runs/current/proprio_ckpt17_gp_3seed_2m_20260916_r2/seed101/training/checkpoints/model_steps_0000491520.npz",
-  "note": "GP-UCB over 999 bank poses, 491,962 downstream steps, panel 19/20"
+ "gp_ucb_ckpt37.npz": {
+  "sha256": "5e8dd2fc5f6ce21681dd79a9aeee5f6104022b0523aaf1f57768f3662771378f",
+  "source": "runs/kant_rigid_20261010/gp_ucb_kant_rigid_ckpt17_2m_20261010_145928/checkpoints/model_steps_0000606208.npz",
+  "note": "GP-UCB over 999 bank poses, 606,304 downstream steps, panel 17/20 (greedy pose, sampled banging)"
  },
  "start_poses.json": {
-  "sha256": "0471a8f644473ab85dbad00e38f89f55ef1ab5b6c40c3dcba7aae11bf38e6cd6",
+  "sha256": "e25fc7e3e83902c662bf87ae9b1786d60cbf84371a69adb15aceeffcb13ec1f1",
   "source": [
-   "configs/banging_rectangle_reset_bank.json (qpos, sha256 fe218f429bf31a87e38e0efae006cee43cba3073747af0b4843b274ea907786e)",
-   "runs/current/proprio_ckpt17_gp_3seed_2m_20260916_r2/seed101/training/preflight.json (ee_xyz, sha256 28b136fb3ccfeeb0f13ed493acea6e8d69057fe95e2e4ae9fbd4bf299d12eacc)"
+   "~/tuli_table/configs/banging_reset_bank_kant_rigid.json (qpos, sha256 52baf4ba3a7c73b5e51a88026b3c5e12c873008c5cc158d82112e25439e6751c)",
+   "runs/kant_rigid_20261010/gp_ucb_kant_rigid_ckpt17_2m_20261010_145928/preflight.json (ee_xyz, sha256 c9f258fd7068ebd56da6d26216a63c541c78a996fc06b8dc08900e096d243029)"
   ],
-  "note": "999 start poses: joint angles and simulated start end-effector XYZ (GP inputs)"
+  "note": "999 start poses: joint angles and simulated start grip-site XYZ (GP inputs); default_start_qpos is the scratch / fine-tune start"
  }
 }

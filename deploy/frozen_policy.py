@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import torch
 
@@ -26,6 +28,10 @@ class SavedPolicy:
 
     @classmethod
     def load(cls, path, device="cpu"):
+        if not hasattr(np, "_core"):  # numpy 1.x reading checkpoints saved with numpy 2
+            import numpy.core.multiarray
+            sys.modules.setdefault("numpy._core", np.core)
+            sys.modules.setdefault("numpy._core.multiarray", np.core.multiarray)
         return cls(torch.load(path, map_location=device, weights_only=False), device)
 
     def normalize(self, observation):
